@@ -1,4 +1,5 @@
 using LinearAlgebra
+using SparseArrays
 using Test
 using JuliaDG
 
@@ -19,6 +20,28 @@ using JuliaDG
 
     @test_throws ArgumentError unit_square_mesh(0, 1)
     @test_throws ArgumentError unit_square_mesh(1, 0)
+end
+
+@testset "SIPG assembly" begin
+    mesh = unit_square_mesh(2, 2)
+    f = (x, y) -> 1.0
+    g = (x, y) -> 0.0
+
+    A, b = assemble_poisson_sipg(mesh, f, g; penalty=20.0)
+    ndofs = 3 * size(mesh.cells, 2)
+
+    @test size(A) == (ndofs, ndofs)
+    @test A isa SparseMatrixCSC{Float64,Int}
+    @test length(b) == ndofs
+    @test isapprox(norm(Matrix(A - transpose(A))), 0.0; atol=1.0e-10)
+
+    solution = A \ b
+    @test all(isfinite, solution)
+
+    zero_f = (x, y) -> 0.0
+    zero_g = (x, y) -> 0.0
+    A0, b0 = assemble_poisson_sipg(mesh, zero_f, zero_g; penalty=20.0)
+    @test isapprox(norm(A0 \ b0), 0.0; atol=1.0e-12)
 end
 
 @testset "basis geometry" begin
