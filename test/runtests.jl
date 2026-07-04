@@ -70,3 +70,24 @@ end
     @test x ≈ 0.25
     @test y ≈ 0.0
 end
+
+@testset "solve and postprocess" begin
+    exact = (x, y) -> sin(pi * x) * sin(pi * y)
+    f = (x, y) -> 2 * pi^2 * exact(x, y)
+
+    coarse = solve_poisson(f; nx=3, ny=3, g=(x, y) -> 0.0, penalty=30.0)
+    fine = solve_poisson(f; nx=6, ny=6, g=(x, y) -> 0.0, penalty=30.0)
+
+    coarse_error = l2_error(coarse, exact)
+    fine_error = l2_error(fine, exact)
+
+    @test fine_error < coarse_error
+    @test evaluate_solution(fine, 0.5, 0.5) isa Float64
+
+    affine = (x, y) -> 1.0 + x + 2.0 * y
+    zero_f = (x, y) -> 0.0
+    affine_result = solve_poisson(zero_f; nx=3, ny=3, g=affine, penalty=30.0)
+
+    @test l2_error(affine_result, affine) < 1.0e-8
+    @test_throws ArgumentError evaluate_solution(affine_result, -0.1, 0.2)
+end
