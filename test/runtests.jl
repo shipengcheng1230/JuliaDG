@@ -91,3 +91,12 @@ end
     @test l2_error(affine_result, affine) < 1.0e-8
     @test_throws ArgumentError evaluate_solution(affine_result, -0.1, 0.2)
 end
+
+@testset "example script" begin
+    package_root = dirname(@__DIR__)
+    example_path = joinpath(package_root, "examples", "poisson2d_unit_square.jl")
+    output = read(`$(Base.julia_cmd()) --project=$package_root $example_path`, String)
+
+    @test occursin(r"DOFs:\s+384", output)
+    @test occursin(r"L2 error:\s+[0-9]", output)
+end
