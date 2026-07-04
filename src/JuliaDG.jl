@@ -6,5 +6,6 @@ using SparseArrays
 export TriMesh, unit_square_mesh
 
 include("mesh.jl")
+include("basis.jl")
 
 end

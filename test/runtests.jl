@@ -1,3 +1,4 @@
+using LinearAlgebra
 using Test
 using JuliaDG
 
@@ -18,4 +19,31 @@ using JuliaDG
 
     @test_throws ArgumentError unit_square_mesh(0, 1)
     @test_throws ArgumentError unit_square_mesh(1, 0)
+end
+
+@testset "basis geometry" begin
+    mesh = unit_square_mesh(1, 1)
+    coords = JuliaDG.cell_coordinates(mesh, 1)
+    area, grads = JuliaDG.triangle_geometry(coords)
+
+    @test area ≈ 0.5
+    @test grads[:, 1] + grads[:, 2] + grads[:, 3] ≈ zeros(2)
+
+    centroid = (
+        sum(coords[1, i] for i in 1:3) / 3,
+        sum(coords[2, i] for i in 1:3) / 3,
+    )
+    lambdas = JuliaDG.barycentric_coordinates(coords, centroid[1], centroid[2])
+    @test collect(lambdas) ≈ fill(1 / 3, 3)
+
+    vertex_values = JuliaDG.basis_values_at_point(coords, coords[1, 1], coords[2, 1])
+    @test vertex_values ≈ [1.0, 0.0, 0.0]
+
+    normal, edge_len = JuliaDG.edge_normal(mesh, 1, 1)
+    @test collect(normal) ≈ [0.0, -1.0]
+    @test edge_len ≈ 1.0
+
+    x, y = JuliaDG.edge_point(mesh, 1, 1, 0.25)
+    @test x ≈ 0.25
+    @test y ≈ 0.0
 end
