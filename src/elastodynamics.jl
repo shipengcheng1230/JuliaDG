@@ -385,3 +385,78 @@ function elastic_energy_density(q, material::ElasticMaterial)
     strain = 0.5 * (sxx * exx + syy * eyy + 2 * sxy * exy)
     return kinetic + strain
 end
+
+function minimum_edge_length(mesh::TriMesh)
+    hmin = Inf
+
+    for face in mesh.faces
+        cell = face.cells[1]
+        local_edge = face.local_edges[1]
+        _, edge_length = edge_normal(mesh, cell, local_edge)
+        hmin = min(hmin, edge_length)
+    end
+
+    return hmin
+end
+
+function default_elastic_dt(mesh::TriMesh, material::ElasticMaterial, cfl::Real)
+    cfl > 0 || throw(ArgumentError("cfl must be positive"))
+    return Float64(cfl) * minimum_edge_length(mesh) / pressure_wave_speed(material)
+end
+
+function ssprk3_step(
+    state::Vector{Float64},
+    dt::Float64,
+    mesh::TriMesh,
+    material::ElasticMaterial,
+    boundary::Symbol,
+)
+    rhs0 = elastic_rhs(state, mesh, material, boundary)
+    u1 = state .+ dt .* rhs0
+
+    rhs1 = elastic_rhs(u1, mesh, material, boundary)
+    u2 = 0.75 .* state .+ 0.25 .* (u1 .+ dt .* rhs1)
+
+    rhs2 = elastic_rhs(u2, mesh, material, boundary)
+    return (1 / 3) .* state .+ (2 / 3) .* (u2 .+ dt .* rhs2)
+end
+
+function solve_elastodynamics(
+    initial;
+    nx::Integer=20,
+    ny::Integer=20,
+    material::ElasticMaterial=ElasticMaterial(1.0, 1.0, 0.5),
+    tspan=(0.0, 0.1),
+    dt=nothing,
+    cfl::Real=0.1,
+    boundary::Symbol=:reflecting,
+)
+    boundary = validate_elastic_boundary(boundary)
+    t0 = Float64(tspan[1])
+    tend = Float64(tspan[2])
+    tend >= t0 || throw(ArgumentError("tspan end must be greater than or equal to start"))
+
+    mesh = unit_square_mesh(nx, ny)
+    state = interpolate_elastic_state(initial, mesh)
+    step_dt = dt === nothing ? default_elastic_dt(mesh, material, cfl) : Float64(dt)
+    step_dt > 0 || throw(ArgumentError("dt must be positive"))
+
+    times = [t0]
+    energy_history = [elastic_energy(mesh, state, material)]
+    time = t0
+
+    while time < tend
+        step = min(step_dt, tend - time)
+        state = ssprk3_step(state, Float64(step), mesh, material, boundary)
+        time += step
+
+        if tend - time <= 10 * eps(max(abs(tend), 1.0))
+            time = tend
+        end
+
+        push!(times, time)
+        push!(energy_history, elastic_energy(mesh, state, material))
+    end
+
+    return ElasticResult(mesh, state, material, times, energy_history, boundary)
+end

@@ -138,6 +138,55 @@ end
     end
 end
 
+@testset "elastic solve" begin
+    zero_initial = (x, y) -> (vx=0.0, vy=0.0, sxx=0.0, syy=0.0, sxy=0.0)
+
+    for boundary in (:reflecting, :traction_free)
+        result = solve_elastodynamics(
+            zero_initial;
+            nx=2,
+            ny=2,
+            tspan=(0.0, 0.03),
+            dt=0.02,
+            boundary=boundary,
+        )
+
+        @test result.boundary == boundary
+        @test result.times[1] == 0.0
+        @test result.times[end] == 0.03
+        @test length(result.energy_history) == length(result.times)
+        @test norm(result.state) ≈ 0.0 atol = 1.0e-12
+        @test result.energy_history[end] ≈ 0.0 atol = 1.0e-12
+    end
+
+    pulse = (x, y) -> begin
+        amplitude = exp(-80 * ((x - 0.5)^2 + (y - 0.5)^2))
+        (vx=amplitude, vy=0.0, sxx=0.0, syy=0.0, sxy=0.0)
+    end
+    pulse_result = solve_elastodynamics(
+        pulse;
+        nx=2,
+        ny=2,
+        tspan=(0.0, 0.005),
+        dt=0.002,
+        boundary=:reflecting,
+    )
+    value = evaluate_elastic_state(pulse_result, 0.5, 0.5)
+
+    @test pulse_result.times[end] == 0.005
+    @test all(isfinite, Tuple(value))
+    @test isfinite(elastic_energy(pulse_result))
+    @test elastic_energy(pulse_result) >= 0.0
+
+    try
+        solve_elastodynamics(zero_initial; nx=1, ny=1, tspan=(0.0, 0.0), boundary=:periodic)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg == "boundary must be :reflecting or :traction_free"
+    end
+end
+
 @testset "SIPG assembly" begin
     mesh = unit_square_mesh(2, 2)
     f = (x, y) -> 1.0
