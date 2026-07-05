@@ -64,6 +64,25 @@ end
     end
 end
 
+@testset "elastic residual" begin
+    mesh = unit_square_mesh(2, 2)
+    material = ElasticMaterial(1.0, 1.0, 0.5)
+    ndofs = 5 * 3 * size(mesh.cells, 2)
+    state = zeros(ndofs)
+
+    @test JuliaDG.pressure_wave_speed(material) ≈ sqrt(2.0)
+    @test JuliaDG.elastic_rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
+    @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
+
+    try
+        JuliaDG.elastic_rhs(state[1:(end - 1)], mesh, material, :reflecting)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg == "elastic state length does not match mesh"
+    end
+end
+
 @testset "SIPG assembly" begin
     mesh = unit_square_mesh(2, 2)
     f = (x, y) -> 1.0

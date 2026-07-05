@@ -73,3 +73,252 @@ function interpolate_elastic_state(initial, mesh::TriMesh)
 
     return state
 end
+
+function pressure_wave_speed(material::ElasticMaterial)
+    return sqrt((material.lambda + 2 * material.mu) / material.rho)
+end
+
+function elastic_flux_x(q, material::ElasticMaterial)
+    vx, vy, sxx, syy, sxy = q
+    return (
+        sxx / material.rho,
+        sxy / material.rho,
+        (material.lambda + 2 * material.mu) * vx,
+        material.lambda * vx,
+        material.mu * vy,
+    )
+end
+
+function elastic_flux_y(q, material::ElasticMaterial)
+    vx, vy, sxx, syy, sxy = q
+    return (
+        sxy / material.rho,
+        syy / material.rho,
+        material.lambda * vy,
+        (material.lambda + 2 * material.mu) * vy,
+        material.mu * vx,
+    )
+end
+
+function physical_normal_flux(q, normal, material::ElasticMaterial)
+    flux_x = elastic_flux_x(q, material)
+    flux_y = elastic_flux_y(q, material)
+    return ntuple(
+        field -> normal[1] * flux_x[field] + normal[2] * flux_y[field],
+        ELASTIC_FIELD_COUNT,
+    )
+end
+
+function normal_flux(left, right, normal, material::ElasticMaterial)
+    left_flux = physical_normal_flux(left, normal, material)
+    right_flux = physical_normal_flux(right, normal, material)
+    alpha = pressure_wave_speed(material)
+
+    return ntuple(
+        field -> 0.5 * (left_flux[field] + right_flux[field]) +
+                 0.5 * alpha * (left[field] - right[field]),
+        ELASTIC_FIELD_COUNT,
+    )
+end
+
+function state_at_point(state::AbstractVector{<:Real}, cell::Integer, phi, ncells::Integer)
+    return ntuple(
+        field -> sum(
+            state[elastic_dof(cell, local_index, field, ncells)] * phi[local_index] for
+            local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+        ),
+        ELASTIC_FIELD_COUNT,
+    )
+end
+
+function boundary_state(q, normal, boundary::Symbol)
+    if boundary === :reflecting
+        return reflecting_state(q, normal)
+    elseif boundary === :traction_free
+        return traction_free_state(q, normal)
+    end
+
+    validate_elastic_boundary(boundary)
+end
+
+function reflecting_state(q, normal)
+    vx, vy, sxx, syy, sxy = q
+    nx, ny = normal
+    normal_velocity = vx * nx + vy * ny
+    reflected_vx = vx - 2 * normal_velocity * nx
+    reflected_vy = vy - 2 * normal_velocity * ny
+    reflected_sxx, reflected_syy, reflected_sxy = reflected_stress(sxx, syy, sxy, normal)
+    return (reflected_vx, reflected_vy, reflected_sxx, reflected_syy, reflected_sxy)
+end
+
+function reflected_stress(sxx::Real, syy::Real, sxy::Real, normal)
+    nx, ny = normal
+    r11 = 1 - 2 * nx^2
+    r12 = -2 * nx * ny
+    r21 = r12
+    r22 = 1 - 2 * ny^2
+
+    reflected_sxx = r11^2 * sxx + 2 * r11 * r12 * sxy + r12^2 * syy
+    reflected_syy = r21^2 * sxx + 2 * r21 * r22 * sxy + r22^2 * syy
+    reflected_sxy = r11 * r21 * sxx + (r11 * r22 + r12 * r21) * sxy + r12 * r22 * syy
+    return (reflected_sxx, reflected_syy, reflected_sxy)
+end
+
+function traction_free_state(q, normal)
+    vx, vy, sxx, syy, sxy = q
+    traction_sxx, traction_syy, traction_sxy = traction_free_stress(sxx, syy, sxy, normal)
+    return (vx, vy, traction_sxx, traction_syy, traction_sxy)
+end
+
+function traction_free_stress(sxx::Real, syy::Real, sxy::Real, normal)
+    nx, ny = normal
+    traction_x = sxx * nx + sxy * ny
+    traction_y = sxy * nx + syy * ny
+    normal_traction = nx * traction_x + ny * traction_y
+
+    ghost_sxx = sxx - 4 * traction_x * nx + 2 * normal_traction * nx^2
+    ghost_syy = syy - 4 * traction_y * ny + 2 * normal_traction * ny^2
+    ghost_sxy = sxy - 2 * (traction_x * ny + nx * traction_y) + 2 * normal_traction * nx * ny
+    return (ghost_sxx, ghost_syy, ghost_sxy)
+end
+
+function elastic_rhs(state::AbstractVector{<:Real}, mesh::TriMesh, material::ElasticMaterial, boundary::Symbol)
+    validate_elastic_boundary(boundary)
+
+    ncells = size(mesh.cells, 2)
+    expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * ncells
+    length(state) == expected_length ||
+        throw(ArgumentError("elastic state length does not match mesh"))
+
+    residual = zeros(Float64, expected_length)
+    add_elastic_volume_terms!(residual, state, mesh, material, ncells)
+    add_elastic_face_terms!(residual, state, mesh, material, boundary, ncells)
+    return apply_elastic_mass_inverse(residual, mesh, ncells)
+end
+
+function add_elastic_volume_terms!(residual, state, mesh::TriMesh, material::ElasticMaterial, ncells::Integer)
+    for cell in 1:ncells
+        coords = cell_coordinates(mesh, cell)
+        area, grads = triangle_geometry(coords)
+
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(state, cell, lambdas, ncells)
+            flux_x = elastic_flux_x(q, material)
+            flux_y = elastic_flux_y(q, material)
+
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                scale_x = -area * weight * grads[1, local_index]
+                scale_y = -area * weight * grads[2, local_index]
+                for field in 1:ELASTIC_FIELD_COUNT
+                    row = elastic_dof(cell, local_index, field, ncells)
+                    residual[row] += scale_x * flux_x[field] + scale_y * flux_y[field]
+                end
+            end
+        end
+    end
+
+    return nothing
+end
+
+function add_elastic_face_terms!(
+    residual,
+    state,
+    mesh::TriMesh,
+    material::ElasticMaterial,
+    boundary::Symbol,
+    ncells::Integer,
+)
+    for face in mesh.faces
+        if face.cells[2] == 0
+            add_elastic_boundary_face!(residual, state, mesh, face, material, boundary, ncells)
+        else
+            add_elastic_interior_face!(residual, state, mesh, face, material, ncells)
+        end
+    end
+
+    return nothing
+end
+
+function add_elastic_interior_face!(residual, state, mesh::TriMesh, face::TriFace, material::ElasticMaterial, ncells::Integer)
+    left_cell, right_cell = face.cells
+    left_edge, right_edge = face.local_edges
+    normal, edge_length = edge_normal(mesh, left_cell, left_edge)
+    left_coords = cell_coordinates(mesh, left_cell)
+    right_coords = cell_coordinates(mesh, right_cell)
+
+    for (s, weight_1d) in EDGE_QUADRATURE
+        x, y = edge_point(mesh, left_cell, left_edge, s)
+        left_phi = basis_values_at_point(left_coords, x, y)
+        right_phi = basis_values_at_point(right_coords, x, y)
+        left_state = state_at_point(state, left_cell, left_phi, ncells)
+        right_state = state_at_point(state, right_cell, right_phi, ncells)
+        flux = normal_flux(left_state, right_state, normal, material)
+        weight = edge_length * weight_1d
+
+        for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+            for field in 1:ELASTIC_FIELD_COUNT
+                residual[elastic_dof(left_cell, local_index, field, ncells)] +=
+                    weight * left_phi[local_index] * flux[field]
+                residual[elastic_dof(right_cell, local_index, field, ncells)] -=
+                    weight * right_phi[local_index] * flux[field]
+            end
+        end
+    end
+
+    return nothing
+end
+
+function add_elastic_boundary_face!(
+    residual,
+    state,
+    mesh::TriMesh,
+    face::TriFace,
+    material::ElasticMaterial,
+    boundary::Symbol,
+    ncells::Integer,
+)
+    cell = face.cells[1]
+    local_edge = face.local_edges[1]
+    normal, edge_length = edge_normal(mesh, cell, local_edge)
+    coords = cell_coordinates(mesh, cell)
+
+    for (s, weight_1d) in EDGE_QUADRATURE
+        x, y = edge_point(mesh, cell, local_edge, s)
+        phi = basis_values_at_point(coords, x, y)
+        interior_state = state_at_point(state, cell, phi, ncells)
+        ghost_state = boundary_state(interior_state, normal, boundary)
+        flux = normal_flux(interior_state, ghost_state, normal, material)
+        weight = edge_length * weight_1d
+
+        for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+            for field in 1:ELASTIC_FIELD_COUNT
+                residual[elastic_dof(cell, local_index, field, ncells)] +=
+                    weight * phi[local_index] * flux[field]
+            end
+        end
+    end
+
+    return nothing
+end
+
+function apply_elastic_mass_inverse(residual::AbstractVector{<:Real}, mesh::TriMesh, ncells::Integer)
+    rhs = similar(Vector{Float64}(residual))
+
+    for cell in 1:ncells
+        area, _ = triangle_geometry(mesh, cell)
+        for field in 1:ELASTIC_FIELD_COUNT
+            dof1 = elastic_dof(cell, 1, field, ncells)
+            dof2 = elastic_dof(cell, 2, field, ncells)
+            dof3 = elastic_dof(cell, 3, field, ncells)
+            r1 = residual[dof1]
+            r2 = residual[dof2]
+            r3 = residual[dof3]
+
+            rhs[dof1] = (9 * r1 - 3 * r2 - 3 * r3) / area
+            rhs[dof2] = (-3 * r1 + 9 * r2 - 3 * r3) / area
+            rhs[dof3] = (-3 * r1 - 3 * r2 + 9 * r3) / area
+        end
+    end
+
+    return rhs
+end
