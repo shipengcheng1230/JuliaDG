@@ -1,0 +1,15 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+docs/build/
+docs/site/
+LocalPreferences.toml
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# AI
+.superpowers
