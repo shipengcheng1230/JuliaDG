@@ -22,6 +22,48 @@ using JuliaDG
     @test_throws ArgumentError unit_square_mesh(1, 0)
 end
 
+@testset "elastic state layout" begin
+    material = ElasticMaterial(1.0, 2.0, 3.0)
+    @test material.rho == 1.0
+    @test material.lambda == 2.0
+    @test material.mu == 3.0
+
+    for args in ((0.0, 1.0, 1.0), (1.0, -0.1, 1.0), (1.0, 1.0, 0.0))
+        try
+            ElasticMaterial(args...)
+            @test false
+        catch err
+            @test err isa ArgumentError
+        end
+    end
+
+    mesh = unit_square_mesh(1, 1)
+    ncells = size(mesh.cells, 2)
+    @test JuliaDG.elastic_dof(1, 1, 1, ncells) == 1
+    @test JuliaDG.elastic_dof(1, 3, 1, ncells) == 3
+    @test JuliaDG.elastic_dof(2, 1, 1, ncells) == 4
+    @test JuliaDG.elastic_dof(1, 1, 2, ncells) == 7
+    @test JuliaDG.elastic_dof(2, 3, 5, ncells) == 30
+
+    named_initial = (x, y) -> (vx=x, vy=y, sxx=x + y, syy=x - y, sxy=2 * x - y)
+    tuple_initial = (x, y) -> (x, y, x + y, x - y, 2 * x - y)
+    named_state = JuliaDG.interpolate_elastic_state(named_initial, mesh)
+    tuple_state = JuliaDG.interpolate_elastic_state(tuple_initial, mesh)
+
+    @test length(named_state) == 5 * 3 * ncells
+    @test tuple_state == named_state
+    @test JuliaDG.validate_elastic_boundary(:reflecting) == :reflecting
+    @test JuliaDG.validate_elastic_boundary(:traction_free) == :traction_free
+
+    try
+        JuliaDG.validate_elastic_boundary(:periodic)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg == "boundary must be :reflecting or :traction_free"
+    end
+end
+
 @testset "SIPG assembly" begin
     mesh = unit_square_mesh(2, 2)
     f = (x, y) -> 1.0
