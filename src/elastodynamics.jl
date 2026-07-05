@@ -116,7 +116,7 @@ function normal_flux(left, right, normal, material::ElasticMaterial)
 
     return ntuple(
         field -> 0.5 * (left_flux[field] + right_flux[field]) +
-                 0.5 * alpha * (left[field] - right[field]),
+                 -0.5 * alpha * (left[field] - right[field]),
         ELASTIC_FIELD_COUNT,
     )
 end

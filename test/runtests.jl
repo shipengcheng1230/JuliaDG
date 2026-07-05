@@ -77,14 +77,10 @@ end
     @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
     @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
     @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
-    @test collect(
-        JuliaDG.normal_flux(
-            interior,
-            JuliaDG.boundary_state(interior, normal, :reflecting),
-            normal,
-            material,
-        ),
-    ) ≈ [3 + sqrt(2.0), 0.0, 0.0, 0.0, 1 + 5 * sqrt(2.0)]
+    reflected = JuliaDG.boundary_state(interior, normal, :reflecting)
+    # LF/Rusanov dissipation must oppose the state jump for this residual convention.
+    @test collect(JuliaDG.normal_flux(interior, reflected, normal, material)) ≈
+          [3 - sqrt(2.0), 0.0, 0.0, 0.0, 1 - 5 * sqrt(2.0)]
 
     mass_mesh = unit_square_mesh(1, 1)
     mass_ncells = size(mass_mesh.cells, 2)
