@@ -1,5 +1,7 @@
 # JuliaDG
 
+[![CI](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml/badge.svg)](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml)
+
 JuliaDG is a minimal Julia package for solving the 2D Poisson equation on the unit square with a P1 discontinuous Galerkin SIPG method.
 
 ```text
