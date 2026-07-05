@@ -140,6 +140,7 @@ end
 
 @testset "elastic solve" begin
     zero_initial = (x, y) -> (vx=0.0, vy=0.0, sxx=0.0, syy=0.0, sxy=0.0)
+    tuple_zero_initial = (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0)
 
     for boundary in (:reflecting, :traction_free)
         result = solve_elastodynamics(
@@ -158,6 +159,21 @@ end
         @test norm(result.state) ≈ 0.0 atol = 1.0e-12
         @test result.energy_history[end] ≈ 0.0 atol = 1.0e-12
     end
+
+    cfl_result = solve_elastodynamics(
+        tuple_zero_initial;
+        nx=2,
+        ny=2,
+        tspan=(0.0, 0.03),
+        boundary=:reflecting,
+    )
+
+    @test cfl_result.times[1] == 0.0
+    @test cfl_result.times[end] == 0.03
+    @test length(cfl_result.times) > 1
+    @test length(cfl_result.energy_history) == length(cfl_result.times)
+    @test all(isfinite, cfl_result.energy_history)
+    @test norm(cfl_result.state) ≈ 0.0 atol = 1.0e-12
 
     pulse = (x, y) -> begin
         amplitude = exp(-80 * ((x - 0.5)^2 + (y - 0.5)^2))
