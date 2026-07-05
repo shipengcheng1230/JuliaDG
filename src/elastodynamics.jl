@@ -322,3 +322,66 @@ function apply_elastic_mass_inverse(residual::AbstractVector{<:Real}, mesh::TriM
 
     return rhs
 end
+
+function named_elastic_state(values)
+    return (
+        vx=Float64(values[1]),
+        vy=Float64(values[2]),
+        sxx=Float64(values[3]),
+        syy=Float64(values[4]),
+        sxy=Float64(values[5]),
+    )
+end
+
+function evaluate_elastic_state(result::ElasticResult, x::Real, y::Real)
+    ncells = size(result.mesh.cells, 2)
+
+    for cell in 1:ncells
+        coords = cell_coordinates(result.mesh, cell)
+        lambdas = barycentric_coordinates(coords, x, y)
+
+        if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
+            return named_elastic_state(state_at_point(result.state, cell, lambdas, ncells))
+        end
+    end
+
+    throw(ArgumentError("point is outside the mesh"))
+end
+
+function elastic_energy(result::ElasticResult)
+    return elastic_energy(result.mesh, result.state, result.material)
+end
+
+function elastic_energy(mesh::TriMesh, state::AbstractVector{<:Real}, material::ElasticMaterial)
+    ncells = size(mesh.cells, 2)
+    expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * ncells
+    length(state) == expected_length ||
+        throw(ArgumentError("elastic state length does not match mesh"))
+
+    total = 0.0
+    for cell in 1:ncells
+        coords = cell_coordinates(mesh, cell)
+        area, _ = triangle_geometry(coords)
+
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(state, cell, lambdas, ncells)
+            total += area * weight * elastic_energy_density(q, material)
+        end
+    end
+
+    return total
+end
+
+function elastic_energy_density(q, material::ElasticMaterial)
+    vx, vy, sxx, syy, sxy = q
+    lambda = material.lambda
+    mu = material.mu
+
+    exx = ((lambda + 2 * mu) * sxx - lambda * syy) / (4 * mu * (lambda + mu))
+    eyy = ((lambda + 2 * mu) * syy - lambda * sxx) / (4 * mu * (lambda + mu))
+    exy = sxy / (2 * mu)
+
+    kinetic = 0.5 * material.rho * (vx^2 + vy^2)
+    strain = 0.5 * (sxx * exx + syy * eyy + 2 * sxy * exy)
+    return kinetic + strain
+end

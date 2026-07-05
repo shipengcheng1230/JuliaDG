@@ -107,6 +107,37 @@ end
     end
 end
 
+@testset "elastic postprocess" begin
+    mesh = unit_square_mesh(1, 1)
+    material = ElasticMaterial(1.0, 1.0, 0.5)
+    initial = (x, y) -> (vx=x, vy=y, sxx=0.1 + x, syy=0.2 + y, sxy=0.3)
+    state = JuliaDG.interpolate_elastic_state(initial, mesh)
+    energy = JuliaDG.elastic_energy(mesh, state, material)
+    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting)
+
+    value = evaluate_elastic_state(result, 0.25, 0.25)
+    @test propertynames(value) == (:vx, :vy, :sxx, :syy, :sxy)
+    @test all(isfinite, Tuple(value))
+    @test value.vx ≈ 0.25
+    @test value.vy ≈ 0.25
+
+    @test isfinite(energy)
+    @test energy >= 0.0
+    @test elastic_energy(result) ≈ energy
+
+    zero_state = zeros(length(state))
+    zero_result = ElasticResult(mesh, zero_state, material, [0.0], [0.0], :reflecting)
+    @test elastic_energy(zero_result) ≈ 0.0
+
+    try
+        evaluate_elastic_state(result, -0.1, 0.2)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg == "point is outside the mesh"
+    end
+end
+
 @testset "SIPG assembly" begin
     mesh = unit_square_mesh(2, 2)
     f = (x, y) -> 1.0
