@@ -92,6 +92,37 @@ end
     @test_throws ArgumentError evaluate_solution(affine_result, -0.1, 0.2)
 end
 
+@testset "plot data" begin
+    mesh = unit_square_mesh(1, 1)
+    ndofs = 3 * size(mesh.cells, 2)
+    coeffs = Float64.(1:ndofs)
+    result = DGResult(mesh, coeffs, spzeros(ndofs, ndofs), zeros(ndofs))
+
+    data = dg_plot_data(result)
+
+    @test length(data.xs) == ndofs
+    @test length(data.ys) == ndofs
+    @test length(data.values) == ndofs
+    @test length(data.faces) == size(mesh.cells, 2)
+    @test data.faces == [(1, 2, 3), (4, 5, 6)]
+    @test isempty(intersect(collect(data.faces[1]), collect(data.faces[2])))
+    @test data.values == coeffs
+    @test data.xs == [0.0, 1.0, 1.0, 0.0, 1.0, 0.0]
+    @test data.ys == [0.0, 0.0, 1.0, 0.0, 1.0, 1.0]
+
+    bad_result = DGResult(mesh, coeffs[1:(end - 1)], spzeros(ndofs - 1, ndofs - 1), zeros(ndofs - 1))
+    @test_throws ArgumentError dg_plot_data(bad_result)
+
+    try
+        plot_solution(result)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg ==
+              "plot_solution requires Makie; load CairoMakie or GLMakie before calling it"
+    end
+end
+
 @testset "example script" begin
     package_root = dirname(@__DIR__)
     example_path = joinpath(package_root, "examples", "poisson2d_unit_square.jl")

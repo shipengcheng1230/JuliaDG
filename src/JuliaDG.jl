@@ -9,11 +9,14 @@ export TriMesh,
     assemble_poisson_sipg,
     solve_poisson,
     evaluate_solution,
-    l2_error
+    l2_error,
+    dg_plot_data,
+    plot_solution
 
 include("mesh.jl")
 include("basis.jl")
 include("assembly.jl")
 include("solve.jl")
+include("plotting.jl")
 
 end
