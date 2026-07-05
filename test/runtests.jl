@@ -69,10 +69,34 @@ end
     material = ElasticMaterial(1.0, 1.0, 0.5)
     ndofs = 5 * 3 * size(mesh.cells, 2)
     state = zeros(ndofs)
+    normal = (1.0, 0.0)
+    interior = (1.0, 2.0, 3.0, 4.0, 5.0)
 
     @test JuliaDG.pressure_wave_speed(material) ≈ sqrt(2.0)
     @test JuliaDG.elastic_rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
     @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
+    @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
+    @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
+    @test collect(
+        JuliaDG.normal_flux(
+            interior,
+            JuliaDG.boundary_state(interior, normal, :reflecting),
+            normal,
+            material,
+        ),
+    ) ≈ [3 + sqrt(2.0), 0.0, 0.0, 0.0, 1 + 5 * sqrt(2.0)]
+
+    mass_mesh = unit_square_mesh(1, 1)
+    mass_ncells = size(mass_mesh.cells, 2)
+    residual = zeros(5 * 3 * mass_ncells)
+    residual[JuliaDG.elastic_dof(1, 1, 1, mass_ncells)] = 1.0
+    residual[JuliaDG.elastic_dof(1, 2, 1, mass_ncells)] = 2.0
+    residual[JuliaDG.elastic_dof(1, 3, 1, mass_ncells)] = 3.0
+    mass_rhs = JuliaDG.apply_elastic_mass_inverse(residual, mass_mesh, mass_ncells)
+    @test mass_rhs[JuliaDG.elastic_dof(1, 1, 1, mass_ncells)] ≈ -12.0
+    @test mass_rhs[JuliaDG.elastic_dof(1, 2, 1, mass_ncells)] ≈ 12.0
+    @test mass_rhs[JuliaDG.elastic_dof(1, 3, 1, mass_ncells)] ≈ 36.0
+    @test all(iszero, mass_rhs[(JuliaDG.elastic_dof(1, 3, 1, mass_ncells) + 1):end])
 
     try
         JuliaDG.elastic_rhs(state[1:(end - 1)], mesh, material, :reflecting)
