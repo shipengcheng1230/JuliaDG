@@ -84,6 +84,49 @@ Run it with:
 julia --project=. examples/poisson2d_unit_square.jl
 ```
 
+## 2D Elastodynamics Example
+
+JuliaDG also includes a focused first-order velocity-stress solver for constant-material isotropic 2D elastodynamics on the same P1 triangular unit-square meshes:
+
+```text
+rho * dt(vx) = dx(sxx) + dy(sxy)
+rho * dt(vy) = dx(sxy) + dy(syy)
+dt(sxx) = (lambda + 2mu) * dx(vx) + lambda * dy(vy)
+dt(syy) = lambda * dx(vx) + (lambda + 2mu) * dy(vy)
+dt(sxy) = mu * (dy(vx) + dx(vy))
+```
+
+Minimal Gaussian pulse:
+
+```julia
+using JuliaDG
+
+material = ElasticMaterial(1.0, 1.0, 0.5)
+
+initial_pulse(x, y) = (
+    vx=0.0,
+    vy=exp(-120 * ((x - 0.5)^2 + (y - 0.5)^2)),
+    sxx=0.0,
+    syy=0.0,
+    sxy=0.0,
+)
+
+result = solve_elastodynamics(
+    initial_pulse;
+    nx=8,
+    ny=8,
+    material=material,
+    tspan=(0.0, 0.02),
+    boundary=:reflecting,
+)
+
+println("Elastic DOFs: ", length(result.state))
+println("Final time: ", result.times[end])
+println("Final energy: ", elastic_energy(result))
+```
+
+V1 uses constant `ElasticMaterial(rho, lambda, mu)` values and supports `:reflecting` and `:traction_free` boundaries. Displacement output, spatially varying material, source terms, absorbing boundaries, mesh-file input, and higher-order elements are outside this first version.
+
 ## Optional Visualization
 
 JuliaDG keeps Makie optional. Install and load a Makie backend such as CairoMakie or GLMakie before calling `plot_solution`:
