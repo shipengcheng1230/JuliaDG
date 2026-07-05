@@ -312,3 +312,13 @@ end
     @test occursin(r"DOFs:\s+384", output)
     @test occursin(r"L2 error:\s+[0-9]", output)
 end
+
+@testset "elastic example script" begin
+    package_root = dirname(@__DIR__)
+    example_path = joinpath(package_root, "examples", "elastodynamics2d_unit_square.jl")
+    output = read(`$(Base.julia_cmd()) --project=$package_root $example_path`, String)
+
+    @test occursin(r"Elastic DOFs:\s+[0-9]+", output)
+    @test occursin(r"Final time:\s+0\.02", output)
+    @test occursin(r"Final energy:\s+[0-9]", output)
+end
