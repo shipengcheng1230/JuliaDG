@@ -81,3 +81,21 @@ Run it with:
 ```bash
 julia --project=. examples/poisson2d_unit_square.jl
 ```
+
+## Optional Visualization
+
+JuliaDG keeps Makie optional. Install and load a Makie backend such as CairoMakie or GLMakie before calling `plot_solution`:
+
+```julia
+using JuliaDG
+using CairoMakie
+
+exact(x, y) = sin(pi * x) * sin(pi * y)
+f(x, y) = 2 * pi^2 * exact(x, y)
+
+result = solve_poisson(f; nx=16, ny=16)
+fig = plot_solution(result)
+save("solution.png", fig)
+```
+
+The plotting helper duplicates cell vertices so discontinuous Galerkin jumps remain visible instead of being averaged across neighboring cells.
