@@ -109,7 +109,7 @@ end
     initial = (x, y) -> (vx=x, vy=y, sxx=0.1 + x, syy=0.2 + y, sxy=0.3)
     state = JuliaDG.interpolate_elastic_state(initial, mesh)
     energy = JuliaDG.elastic_energy(mesh, state, material)
-    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting)
+    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting, nothing)
 
     value = evaluate_elastic_state(result, 0.25, 0.25)
     @test propertynames(value) == (:vx, :vy, :sxx, :syy, :sxy)
@@ -122,7 +122,7 @@ end
     @test elastic_energy(result) ≈ energy
 
     zero_state = zeros(length(state))
-    zero_result = ElasticResult(mesh, zero_state, material, [0.0], [0.0], :reflecting)
+    zero_result = ElasticResult(mesh, zero_state, material, [0.0], [0.0], :reflecting, nothing)
     @test elastic_energy(zero_result) ≈ 0.0
 
     try
@@ -170,6 +170,32 @@ end
     @test length(cfl_result.energy_history) == length(cfl_result.times)
     @test all(isfinite, cfl_result.energy_history)
     @test norm(cfl_result.state) ≈ 0.0 atol = 1.0e-12
+
+    history_result = solve_elastodynamics(
+        tuple_zero_initial;
+        nx=2,
+        ny=2,
+        tspan=(0.0, 0.03),
+        dt=0.02,
+        boundary=:reflecting,
+        save_history=true,
+    )
+
+    @test history_result.state_history !== nothing
+    @test length(history_result.state_history) == length(history_result.times)
+    @test history_result.state_history[1] ≈ zeros(length(history_result.state))
+    @test history_result.state_history[end] ≈ history_result.state
+    @test all(state -> length(state) == length(history_result.state), history_result.state_history)
+
+    default_history_result = solve_elastodynamics(
+        tuple_zero_initial;
+        nx=2,
+        ny=2,
+        tspan=(0.0, 0.03),
+        dt=0.02,
+        boundary=:reflecting,
+    )
+    @test default_history_result.state_history === nothing
 
     pulse = (x, y) -> begin
         amplitude = exp(-80 * ((x - 0.5)^2 + (y - 0.5)^2))

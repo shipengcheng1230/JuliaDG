@@ -18,6 +18,7 @@ struct ElasticResult
     times::Vector{Float64}
     energy_history::Vector{Float64}
     boundary::Symbol
+    state_history::Union{Nothing,Vector{Vector{Float64}}}
 end
 
 const ELASTIC_FIELD_NAMES = (:vx, :vy, :sxx, :syy, :sxy)
@@ -430,6 +431,7 @@ function solve_elastodynamics(
     dt=nothing,
     cfl::Real=0.1,
     boundary::Symbol=:reflecting,
+    save_history::Bool=false,
 )
     boundary = validate_elastic_boundary(boundary)
     t0 = Float64(tspan[1])
@@ -443,6 +445,7 @@ function solve_elastodynamics(
 
     times = [t0]
     energy_history = [elastic_energy(mesh, state, material)]
+    state_history = save_history ? [copy(state)] : nothing
     time = t0
 
     while time < tend
@@ -456,7 +459,10 @@ function solve_elastodynamics(
 
         push!(times, time)
         push!(energy_history, elastic_energy(mesh, state, material))
+        if save_history
+            push!(state_history, copy(state))
+        end
     end
 
-    return ElasticResult(mesh, state, material, times, energy_history, boundary)
+    return ElasticResult(mesh, state, material, times, energy_history, boundary, state_history)
 end
