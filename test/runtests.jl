@@ -365,6 +365,15 @@ end
     @test_throws ArgumentError elastic_plot_data(result, 1)
     @test_throws ArgumentError elastic_plot_data(history_result, 0)
     @test_throws ArgumentError elastic_plot_data(history_result, 3)
+
+    try
+        record_solution(result, "unused.gif")
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg ==
+              "record_solution requires Makie; load CairoMakie or GLMakie before calling it"
+    end
 end
 
 @testset "example script" begin

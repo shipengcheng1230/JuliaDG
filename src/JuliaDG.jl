@@ -17,7 +17,8 @@ export TriMesh,
     elastic_energy,
     dg_plot_data,
     elastic_plot_data,
-    plot_solution
+    plot_solution,
+    record_solution
 
 include("mesh.jl")
 include("basis.jl")

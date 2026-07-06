@@ -91,3 +91,7 @@ end
 function plot_solution(args...; kwargs...)
     throw(ArgumentError("plot_solution requires Makie; load CairoMakie or GLMakie before calling it"))
 end
+
+function record_solution(args...; kwargs...)
+    throw(ArgumentError("record_solution requires Makie; load CairoMakie or GLMakie before calling it"))
+end
