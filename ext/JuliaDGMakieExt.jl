@@ -5,15 +5,21 @@ using Makie
 
 function JuliaDG.plot_solution(result::JuliaDG.DGResult; colormap=:viridis, show_mesh::Bool=true)
     data = JuliaDG.dg_plot_data(result)
-    vertices = hcat(data.xs, data.ys)
-    faces = Matrix{Int}(undef, length(data.faces), 3)
+    return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label="u")
+end
 
-    for (row, face) in enumerate(data.faces)
-        faces[row, 1] = face[1]
-        faces[row, 2] = face[2]
-        faces[row, 3] = face[3]
-    end
+function JuliaDG.plot_solution(
+    result::JuliaDG.ElasticResult;
+    field::Symbol=:velocity_magnitude,
+    colormap=:viridis,
+    show_mesh::Bool=true,
+)
+    data = JuliaDG.elastic_plot_data(result; field=field)
+    return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label=elastic_colorbar_label(field))
+end
 
+function plot_cell_data(data; colormap, show_mesh::Bool, colorbar_label::AbstractString)
+    vertices, faces = triangulation(data)
     fig = Makie.Figure()
     ax = Makie.Axis(fig[1, 1]; xlabel="x", ylabel="y", aspect=Makie.DataAspect())
     mesh_plot = Makie.mesh!(
@@ -34,10 +40,25 @@ function JuliaDG.plot_solution(result::JuliaDG.DGResult; colormap=:viridis, show
         )
     end
 
-    Makie.Colorbar(fig[1, 2], mesh_plot; label="u")
+    Makie.Colorbar(fig[1, 2], mesh_plot; label=colorbar_label)
     Makie.autolimits!(ax)
     return fig
 end
+
+function triangulation(data)
+    vertices = hcat(data.xs, data.ys)
+    faces = Matrix{Int}(undef, length(data.faces), 3)
+
+    for (row, face) in enumerate(data.faces)
+        faces[row, 1] = face[1]
+        faces[row, 2] = face[2]
+        faces[row, 3] = face[3]
+    end
+
+    return vertices, faces
+end
+
+elastic_colorbar_label(field::Symbol) = field === :velocity_magnitude ? "|v|" : String(field)
 
 function edge_segments(data)
     points = Makie.Point2f[]
@@ -65,14 +86,7 @@ function JuliaDG.record_solution(
         throw(ArgumentError("ElasticResult does not contain state history; solve with save_history=true"))
 
     first_data = JuliaDG.elastic_plot_data(result, 1; field=field)
-    vertices = hcat(first_data.xs, first_data.ys)
-    faces = Matrix{Int}(undef, length(first_data.faces), 3)
-
-    for (row, face) in enumerate(first_data.faces)
-        faces[row, 1] = face[1]
-        faces[row, 2] = face[2]
-        faces[row, 3] = face[3]
-    end
+    vertices, faces = triangulation(first_data)
 
     color_values = Makie.Observable(first_data.values)
     fig = Makie.Figure()
@@ -95,7 +109,7 @@ function JuliaDG.record_solution(
         )
     end
 
-    Makie.Colorbar(fig[1, 2], mesh_plot; label=field === :velocity_magnitude ? "|v|" : String(field))
+    Makie.Colorbar(fig[1, 2], mesh_plot; label=elastic_colorbar_label(field))
     Makie.autolimits!(ax)
 
     Makie.record(fig, path, eachindex(result.state_history); framerate=framerate) do frame
