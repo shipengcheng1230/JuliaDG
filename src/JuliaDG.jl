@@ -16,6 +16,7 @@ export TriMesh,
     l2_error,
     elastic_energy,
     dg_plot_data,
+    elastic_plot_data,
     plot_solution
 
 include("mesh.jl")

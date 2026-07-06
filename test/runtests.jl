@@ -326,6 +326,47 @@ end
     end
 end
 
+@testset "elastic plot data" begin
+    mesh = unit_square_mesh(1, 1)
+    material = ElasticMaterial(1.0, 1.0, 0.5)
+    initial = (x, y) -> (vx=x, vy=2 * y, sxx=x + y, syy=x - y, sxy=10 + x - y)
+    state = JuliaDG.interpolate_elastic_state(initial, mesh)
+    energy = JuliaDG.elastic_energy(mesh, state, material)
+    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting, nothing)
+
+    data = elastic_plot_data(result)
+
+    @test length(data.xs) == length(state) ÷ 5
+    @test length(data.ys) == length(state) ÷ 5
+    @test length(data.values) == length(state) ÷ 5
+    @test data.faces == [(1, 2, 3), (4, 5, 6)]
+    @test data.values ≈ [sqrt(x^2 + (2 * y)^2) for (x, y) in zip(data.xs, data.ys)]
+
+    sxy_data = elastic_plot_data(result; field=:sxy)
+    @test sxy_data.xs == data.xs
+    @test sxy_data.ys == data.ys
+    @test sxy_data.faces == data.faces
+    @test sxy_data.values ≈ [10 + x - y for (x, y) in zip(data.xs, data.ys)]
+
+    @test_throws ArgumentError elastic_plot_data(result; field=:pressure)
+
+    state2 = copy(state)
+    ncells = size(mesh.cells, 2)
+    for cell in 1:ncells
+        for local_index in 1:JuliaDG.ELASTIC_LOCAL_DOF_COUNT
+            state2[JuliaDG.elastic_dof(cell, local_index, 1, ncells)] = 3.0
+            state2[JuliaDG.elastic_dof(cell, local_index, 2, ncells)] = 4.0
+        end
+    end
+    history_result = ElasticResult(mesh, state2, material, [0.0, 0.1], [energy, energy], :reflecting, [state, state2])
+    frame_data = elastic_plot_data(history_result, 2)
+
+    @test frame_data.values ≈ fill(5.0, length(frame_data.values))
+    @test_throws ArgumentError elastic_plot_data(result, 1)
+    @test_throws ArgumentError elastic_plot_data(history_result, 0)
+    @test_throws ArgumentError elastic_plot_data(history_result, 3)
+end
+
 @testset "example script" begin
     package_root = dirname(@__DIR__)
     example_path = joinpath(package_root, "examples", "poisson2d_unit_square.jl")
