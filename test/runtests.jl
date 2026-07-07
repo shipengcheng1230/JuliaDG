@@ -24,6 +24,7 @@ import Meshes
 
     @test mesh.vertices == [0.0 1.0 0.0 1.0; 0.0 0.0 1.0 1.0]
     @test mesh.cells == [1 1; 2 4; 4 3]
+    @test resolve_mesh(mesh, 9, 9) === mesh
 
     meshes_grid = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
     converted = TriMesh(meshes_grid)
