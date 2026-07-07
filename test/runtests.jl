@@ -32,6 +32,18 @@ import Meshes
     @test converted.cells == mesh.cells
     @test JuliaDG.mesh_backend(converted) === meshes_grid
 
+    clockwise_points = [
+        Meshes.Point(0.0, 0.0),
+        Meshes.Point(1.0, 0.0),
+        Meshes.Point(0.0, 1.0),
+    ]
+    clockwise_connectivities = [Meshes.connect((1, 3, 2), Meshes.Triangle)]
+    clockwise_mesh = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
+    clockwise_converted = TriMesh(clockwise_mesh)
+
+    @test clockwise_converted.cells[:, 1] == [1, 2, 3]
+    @test JuliaDG.triangle_geometry(clockwise_converted, 1)[1] ≈ 0.5
+
     mesh2 = unit_square_mesh(2, 1)
     @test size(mesh2.vertices) == (2, 6)
     @test size(mesh2.cells) == (3, 4)
@@ -351,6 +363,18 @@ end
     @test custom_result.mesh === custom_mesh
     @test length(custom_result.coeffs) == 3
     @test l2_error(custom_result, affine) < 1.0e-8
+
+    raw_custom_mesh = Meshes.SimpleMesh(custom_points, custom_connectivities)
+    raw_custom_result = solve_poisson(
+        zero_f;
+        mesh=raw_custom_mesh,
+        g=affine,
+        penalty=30.0,
+    )
+
+    @test JuliaDG.mesh_backend(raw_custom_result.mesh) === raw_custom_mesh
+    @test length(raw_custom_result.coeffs) == 3
+    @test l2_error(raw_custom_result, affine) < 1.0e-8
 end
 
 @testset "plot data" begin

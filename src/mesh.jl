@@ -60,7 +60,7 @@ end
 
 function TriMesh(mesh::Meshes.Mesh)
     vertices = vertices_matrix(mesh)
-    cells = cells_matrix(mesh)
+    cells = orient_counterclockwise_cells(vertices, cells_matrix(mesh))
     return TriMesh(vertices, cells, build_faces(cells), mesh)
 end
 
@@ -95,6 +95,28 @@ function cells_matrix(mesh::Meshes.Mesh)
     end
 
     return cells
+end
+
+function orient_counterclockwise_cells(vertices::AbstractMatrix{<:Real}, cells::Matrix{Int})
+    oriented_cells = copy(cells)
+
+    for cell in axes(oriented_cells, 2)
+        v1 = oriented_cells[1, cell]
+        v2 = oriented_cells[2, cell]
+        v3 = oriented_cells[3, cell]
+        det_j =
+            (vertices[1, v2] - vertices[1, v1]) * (vertices[2, v3] - vertices[2, v1]) -
+            (vertices[1, v3] - vertices[1, v1]) * (vertices[2, v2] - vertices[2, v1])
+
+        if det_j < 0
+            oriented_cells[2, cell], oriented_cells[3, cell] =
+                oriented_cells[3, cell], oriented_cells[2, cell]
+        elseif det_j == 0
+            throw(ArgumentError("Meshes triangle cells must have positive area"))
+        end
+    end
+
+    return oriented_cells
 end
 
 function unit_square_mesh(nx::Integer, ny::Integer)
