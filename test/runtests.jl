@@ -55,6 +55,43 @@ import Meshes
     @test_throws ArgumentError unit_square_mesh(1, 0)
 end
 
+@testset "Meshes triangle queries" begin
+    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
+
+    @test raw isa Meshes.Mesh
+    @test JuliaDG.point_xy(raw, 1) == (0.0, 0.0)
+    @test JuliaDG.point_xy(raw, 4) == (1.0, 1.0)
+    @test JuliaDG.triangle_connectivities(raw) == [(1, 2, 4), (1, 4, 3)]
+    @test JuliaDG.oriented_triangle_connectivities(raw) == [(1, 2, 4), (1, 4, 3)]
+    @test JuliaDG.triangle_count(raw) == 2
+    @test JuliaDG.triangle_points(raw, 1) == (1, 2, 4)
+    @test JuliaDG.triangle_points(raw, 2) == (1, 4, 3)
+
+    facets = JuliaDG.facet_adjacencies(raw)
+    @test length(facets) == 5
+    @test count(facet -> facet.triangles[2] == 0, facets) == 4
+    @test count(facet -> facet.triangles[2] != 0, facets) == 1
+    @test map(facet -> (facet.point_ids, facet.triangles, facet.local_edges), facets) == [
+        ((1, 2), (1, 0), (1, 0)),
+        ((2, 4), (1, 0), (2, 0)),
+        ((1, 4), (1, 2), (3, 1)),
+        ((3, 4), (2, 0), (2, 0)),
+        ((1, 3), (2, 0), (3, 0)),
+    ]
+
+    clockwise_points = [
+        Meshes.Point(0.0, 0.0),
+        Meshes.Point(1.0, 0.0),
+        Meshes.Point(0.0, 1.0),
+    ]
+    clockwise_connectivities = [Meshes.connect((1, 3, 2), Meshes.Triangle)]
+    clockwise = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
+
+    @test JuliaDG.triangle_connectivities(clockwise) == [(1, 3, 2)]
+    @test JuliaDG.triangle_points(clockwise, 1) == (1, 2, 3)
+    @test JuliaDG.oriented_triangle_connectivities(clockwise) == [(1, 2, 3)]
+end
+
 @testset "elastic state layout" begin
     material = ElasticMaterial(1.0, 2.0, 3.0)
     @test material.rho == 1.0
