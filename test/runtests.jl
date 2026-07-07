@@ -236,6 +236,25 @@ end
     @test isfinite(elastic_energy(pulse_result))
     @test elastic_energy(pulse_result) >= 0.0
 
+    elastic_custom_points = [
+        Meshes.Point(0.0, 0.0),
+        Meshes.Point(1.0, 0.0),
+        Meshes.Point(0.0, 1.0),
+    ]
+    elastic_custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
+    elastic_custom_mesh = TriMesh(Meshes.SimpleMesh(elastic_custom_points, elastic_custom_connectivities))
+    elastic_custom_result = solve_elastodynamics(
+        tuple_zero_initial;
+        mesh=elastic_custom_mesh,
+        tspan=(0.0, 0.01),
+        dt=0.01,
+        boundary=:reflecting,
+    )
+
+    @test elastic_custom_result.mesh === elastic_custom_mesh
+    @test length(elastic_custom_result.state) == 15
+    @test norm(elastic_custom_result.state) ≈ 0.0 atol = 1.0e-12
+
     try
         solve_elastodynamics(zero_initial; nx=1, ny=1, tspan=(0.0, 0.0), boundary=:periodic)
         @test false
@@ -313,6 +332,24 @@ end
 
     @test l2_error(affine_result, affine) < 1.0e-8
     @test_throws ArgumentError evaluate_solution(affine_result, -0.1, 0.2)
+
+    custom_points = [
+        Meshes.Point(0.0, 0.0),
+        Meshes.Point(1.0, 0.0),
+        Meshes.Point(0.0, 1.0),
+    ]
+    custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
+    custom_mesh = TriMesh(Meshes.SimpleMesh(custom_points, custom_connectivities))
+    custom_result = solve_poisson(
+        zero_f;
+        mesh=custom_mesh,
+        g=affine,
+        penalty=30.0,
+    )
+
+    @test custom_result.mesh === custom_mesh
+    @test length(custom_result.coeffs) == 3
+    @test l2_error(custom_result, affine) < 1.0e-8
 end
 
 @testset "plot data" begin

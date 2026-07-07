@@ -18,7 +18,8 @@ V1 intentionally stays small:
 - SIPG interior face terms.
 - Weak Dirichlet boundary data through Nitsche/SIPG boundary terms.
 - Sparse assembly and direct solution with `A \ b`.
-- No plotting, mesh files, external dependencies, high-order elements, or generic PDE framework.
+- Mesh construction through Meshes.jl, with Makie plotting still optional.
+- No mesh files, high-order elements, or generic PDE framework.
 
 ## API
 
@@ -26,6 +27,7 @@ V1 intentionally stays small:
 mesh = unit_square_mesh(nx, ny)
 A, b = assemble_poisson_sipg(mesh, f, g; penalty=20.0)
 result = solve_poisson(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
+custom_result = solve_poisson(f; mesh=mesh, g=(x, y) -> 0.0, penalty=20.0)
 u_xy = evaluate_solution(result, x, y)
 err = l2_error(result, exact)
 ```
@@ -38,6 +40,8 @@ DGResult(mesh, coeffs, A, b)
 ```
 
 `TriMesh.vertices` is a `2 x nvertices` coordinate matrix. `TriMesh.cells` is a `3 x ncells` matrix of vertex indices. Each triangle owns three DG degrees of freedom.
+
+`TriMesh` stores a Meshes.jl backend internally. Access it with `mesh_backend(mesh)` when you need Meshes.jl algorithms, or construct a JuliaDG mesh from a triangular Meshes.jl mesh with `TriMesh(meshes_mesh)`.
 
 ## SIPG Form
 

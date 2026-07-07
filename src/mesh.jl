@@ -34,6 +34,18 @@ const LOCAL_EDGES = ((1, 2), (2, 3), (3, 1))
 
 mesh_backend(mesh::TriMesh) = mesh.backend
 
+function resolve_mesh(mesh, nx::Integer, ny::Integer)
+    if mesh === nothing
+        return unit_square_mesh(nx, ny)
+    elseif mesh isa TriMesh
+        return mesh
+    elseif mesh isa Meshes.Mesh
+        return TriMesh(mesh)
+    end
+
+    throw(ArgumentError("mesh must be nothing, TriMesh, or Meshes.Mesh"))
+end
+
 function meshes_points(vertices::AbstractMatrix{<:Real})
     return [Meshes.Point(vertices[1, vertex], vertices[2, vertex]) for vertex in axes(vertices, 2)]
 end

@@ -426,6 +426,7 @@ function solve_elastodynamics(
     initial;
     nx::Integer=20,
     ny::Integer=20,
+    mesh=nothing,
     material::ElasticMaterial=ElasticMaterial(1.0, 1.0, 0.5),
     tspan=(0.0, 0.1),
     dt=nothing,
@@ -438,19 +439,19 @@ function solve_elastodynamics(
     tend = Float64(tspan[2])
     tend >= t0 || throw(ArgumentError("tspan end must be greater than or equal to start"))
 
-    mesh = unit_square_mesh(nx, ny)
-    state = interpolate_elastic_state(initial, mesh)
-    step_dt = dt === nothing ? default_elastic_dt(mesh, material, cfl) : Float64(dt)
+    dg_mesh = resolve_mesh(mesh, nx, ny)
+    state = interpolate_elastic_state(initial, dg_mesh)
+    step_dt = dt === nothing ? default_elastic_dt(dg_mesh, material, cfl) : Float64(dt)
     step_dt > 0 || throw(ArgumentError("dt must be positive"))
 
     times = [t0]
-    energy_history = [elastic_energy(mesh, state, material)]
+    energy_history = [elastic_energy(dg_mesh, state, material)]
     state_history = save_history ? [copy(state)] : nothing
     time = t0
 
     while time < tend
         step = min(step_dt, tend - time)
-        state = ssprk3_step(state, Float64(step), mesh, material, boundary)
+        state = ssprk3_step(state, Float64(step), dg_mesh, material, boundary)
         time += step
 
         if tend - time <= 10 * eps(max(abs(tend), 1.0))
@@ -458,11 +459,11 @@ function solve_elastodynamics(
         end
 
         push!(times, time)
-        push!(energy_history, elastic_energy(mesh, state, material))
+        push!(energy_history, elastic_energy(dg_mesh, state, material))
         if save_history
             push!(state_history, copy(state))
         end
     end
 
-    return ElasticResult(mesh, state, material, times, energy_history, boundary, state_history)
+    return ElasticResult(dg_mesh, state, material, times, energy_history, boundary, state_history)
 end

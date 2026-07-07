@@ -5,11 +5,18 @@ struct DGResult
     b::Vector{Float64}
 end
 
-function solve_poisson(f; nx::Integer=8, ny::Integer=8, g=(x, y) -> 0.0, penalty::Real=20.0)
-    mesh = unit_square_mesh(nx, ny)
-    A, b = assemble_poisson_sipg(mesh, f, g; penalty=penalty)
+function solve_poisson(
+    f;
+    nx::Integer=8,
+    ny::Integer=8,
+    mesh=nothing,
+    g=(x, y) -> 0.0,
+    penalty::Real=20.0,
+)
+    dg_mesh = resolve_mesh(mesh, nx, ny)
+    A, b = assemble_poisson_sipg(dg_mesh, f, g; penalty=penalty)
     coeffs = A \ b
-    return DGResult(mesh, Vector{Float64}(coeffs), A, b)
+    return DGResult(dg_mesh, Vector{Float64}(coeffs), A, b)
 end
 
 function evaluate_solution(result::DGResult, x::Real, y::Real)
