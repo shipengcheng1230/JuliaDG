@@ -46,42 +46,51 @@ function meshes_simple_mesh(vertices::AbstractMatrix{<:Real}, cells::AbstractMat
     return Meshes.SimpleMesh(meshes_points(vertices), meshes_connectivities(cells))
 end
 
+function TriMesh(mesh::Meshes.Mesh)
+    vertices = vertices_matrix(mesh)
+    cells = cells_matrix(mesh)
+    return TriMesh(vertices, cells, build_faces(cells), mesh)
+end
+
+plain_coordinate(value::Real) = Float64(value)
+plain_coordinate(value) = Float64(getproperty(value, :val))
+
+function vertices_matrix(mesh::Meshes.Mesh)
+    points = Meshes.vertices(mesh)
+    vertices = Matrix{Float64}(undef, 2, length(points))
+
+    for (vertex, point) in enumerate(points)
+        point_coords = Meshes.coords(point)
+        vertices[1, vertex] = plain_coordinate(point_coords.x)
+        vertices[2, vertex] = plain_coordinate(point_coords.y)
+    end
+
+    return vertices
+end
+
+function cells_matrix(mesh::Meshes.Mesh)
+    mesh_topology = Meshes.topology(mesh)
+    hasproperty(mesh_topology, :connec) ||
+        throw(ArgumentError("only Meshes meshes with connectivity topology are supported"))
+
+    connectivities = collect(getproperty(mesh_topology, :connec))
+    cells = Matrix{Int}(undef, 3, length(connectivities))
+
+    for (cell, connectivity) in enumerate(connectivities)
+        indices = getproperty(connectivity, :indices)
+        length(indices) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        cells[:, cell] .= indices
+    end
+
+    return cells
+end
+
 function unit_square_mesh(nx::Integer, ny::Integer)
     nx > 0 || throw(ArgumentError("nx must be positive"))
     ny > 0 || throw(ArgumentError("ny must be positive"))
 
-    nvertices = (nx + 1) * (ny + 1)
-    vertices = Matrix{Float64}(undef, 2, nvertices)
-
-    vertex_id(i, j) = i + 1 + (nx + 1) * j
-
-    for j in 0:ny
-        y = j / ny
-        for i in 0:nx
-            x = i / nx
-            id = vertex_id(i, j)
-            vertices[1, id] = x
-            vertices[2, id] = y
-        end
-    end
-
-    cells = Matrix{Int}(undef, 3, 2 * nx * ny)
-    cell = 1
-    for j in 0:(ny - 1)
-        for i in 0:(nx - 1)
-            v00 = vertex_id(i, j)
-            v10 = vertex_id(i + 1, j)
-            v01 = vertex_id(i, j + 1)
-            v11 = vertex_id(i + 1, j + 1)
-
-            cells[:, cell] .= (v00, v10, v11)
-            cell += 1
-            cells[:, cell] .= (v00, v11, v01)
-            cell += 1
-        end
-    end
-
-    return TriMesh(vertices, cells, build_faces(cells))
+    grid = Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(nx, ny))
+    return TriMesh(Meshes.simplexify(grid))
 end
 
 ordered_edge(a::Int, b::Int) = a < b ? (a, b) : (b, a)

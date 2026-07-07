@@ -15,6 +15,15 @@ import Meshes
     @test count(face -> face.cells[2] == 0, mesh.faces) == 4
     @test count(face -> face.cells[2] != 0, mesh.faces) == 1
 
+    @test mesh.vertices == [0.0 1.0 0.0 1.0; 0.0 0.0 1.0 1.0]
+    @test mesh.cells == [1 1; 2 4; 4 3]
+
+    meshes_grid = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
+    converted = TriMesh(meshes_grid)
+    @test converted.vertices == mesh.vertices
+    @test converted.cells == mesh.cells
+    @test JuliaDG.mesh_backend(converted) === meshes_grid
+
     mesh2 = unit_square_mesh(2, 1)
     @test size(mesh2.vertices) == (2, 6)
     @test size(mesh2.cells) == (3, 4)
