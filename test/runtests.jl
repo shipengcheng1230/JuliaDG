@@ -67,6 +67,14 @@ end
     @test JuliaDG.triangle_points(raw, 1) == (1, 2, 4)
     @test JuliaDG.triangle_points(raw, 2) == (1, 4, 3)
 
+    legacy = unit_square_mesh(1, 1)
+    @test !applicable(JuliaDG.point_xy, legacy, 1)
+    @test !applicable(JuliaDG.triangle_connectivities, legacy)
+    @test !applicable(JuliaDG.oriented_triangle_connectivities, legacy)
+    @test !applicable(JuliaDG.triangle_count, legacy)
+    @test !applicable(JuliaDG.triangle_points, legacy, 1)
+    @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
+
     facets = JuliaDG.facet_adjacencies(raw)
     @test length(facets) == 5
     @test count(facet -> facet.triangles[2] == 0, facets) == 4
