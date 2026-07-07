@@ -73,6 +73,7 @@ end
     @test !applicable(JuliaDG.oriented_triangle_connectivities, legacy)
     @test !applicable(JuliaDG.triangle_count, legacy)
     @test !applicable(JuliaDG.triangle_points, legacy, 1)
+    @test !isdefined(JuliaDG, :_facet_adjacencies_from_connectivities)
     @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
 
     facets = JuliaDG.facet_adjacencies(raw)

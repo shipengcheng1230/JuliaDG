@@ -223,10 +223,7 @@ function local_edge_for_vertices(cell_vertices::NTuple{3,Int}, edge_vertices::NT
 end
 
 function facet_adjacencies(mesh::Meshes.Mesh)
-    return _facet_adjacencies_from_connectivities(oriented_triangle_connectivities(mesh))
-end
-
-function _facet_adjacencies_from_connectivities(triangles::Vector{NTuple{3,Int}})
+    triangles = oriented_triangle_connectivities(mesh)
     connectivities = [Meshes.connect(points, Meshes.Triangle) for points in triangles]
     topology = Meshes.HalfEdgeTopology(connectivities; sort=false)
     edge_triangles = Meshes.Coboundary{1,2}(topology)
