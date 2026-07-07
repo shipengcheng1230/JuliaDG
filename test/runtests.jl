@@ -14,6 +14,13 @@ import Meshes
     @test length(mesh.faces) == 5
     @test count(face -> face.cells[2] == 0, mesh.faces) == 4
     @test count(face -> face.cells[2] != 0, mesh.faces) == 1
+    @test map(face -> (face.vertices, face.cells, face.local_edges), mesh.faces) == [
+        ((1, 2), (1, 0), (1, 0)),
+        ((2, 4), (1, 0), (2, 0)),
+        ((1, 4), (1, 2), (3, 1)),
+        ((3, 4), (2, 0), (2, 0)),
+        ((1, 3), (2, 0), (3, 0)),
+    ]
 
     @test mesh.vertices == [0.0 1.0 0.0 1.0; 0.0 0.0 1.0 1.0]
     @test mesh.cells == [1 1; 2 4; 4 3]

@@ -96,27 +96,41 @@ end
 ordered_edge(a::Int, b::Int) = a < b ? (a, b) : (b, a)
 
 function build_faces(cells::Matrix{Int})
-    open_faces = Dict{NTuple{2,Int},NTuple{2,Int}}()
-    faces = TriFace[]
+    connectivities = meshes_connectivities(cells)
+    topology = Meshes.HalfEdgeTopology(connectivities; sort=false)
+    edge_cells = Meshes.Coboundary{1,2}(topology)
+    edge4pair = getproperty(topology, :edge4pair)
+    keys_by_edge = Dict(edge => key for (key, edge) in edge4pair)
 
-    for cell in 1:size(cells, 2)
-        for local_edge in 1:3
-            a, b = LOCAL_EDGES[local_edge]
-            key = ordered_edge(cells[a, cell], cells[b, cell])
-            if haskey(open_faces, key)
-                other_cell, other_edge = open_faces[key]
-                push!(faces, TriFace(key, (other_cell, cell), (other_edge, local_edge)))
-                delete!(open_faces, key)
-            else
-                open_faces[key] = (cell, local_edge)
-            end
+    faces = TriFace[]
+    sizehint!(faces, length(edge4pair))
+
+    for edge in sort!(collect(values(edge4pair)))
+        vertices = keys_by_edge[edge]
+        incident_cells = Tuple(edge_cells(edge))
+
+        if length(incident_cells) == 1
+            cell = incident_cells[1]
+            local_edge = local_edge_for_vertices(Tuple(cells[:, cell]), vertices)
+            push!(faces, TriFace(vertices, (cell, 0), (local_edge, 0)))
+        elseif length(incident_cells) == 2
+            left_cell, right_cell = incident_cells
+            left_edge = local_edge_for_vertices(Tuple(cells[:, left_cell]), vertices)
+            right_edge = local_edge_for_vertices(Tuple(cells[:, right_cell]), vertices)
+            push!(faces, TriFace(vertices, (left_cell, right_cell), (left_edge, right_edge)))
+        else
+            throw(ArgumentError("triangular mesh edge must have one or two incident cells"))
         end
     end
 
-    for (key, owner) in open_faces
-        cell, local_edge = owner
-        push!(faces, TriFace(key, (cell, 0), (local_edge, 0)))
+    return faces
+end
+
+function local_edge_for_vertices(cell_vertices::NTuple{3,Int}, edge_vertices::NTuple{2,Int})
+    for local_edge in 1:3
+        a, b = LOCAL_EDGES[local_edge]
+        ordered_edge(cell_vertices[a], cell_vertices[b]) == edge_vertices && return local_edge
     end
 
-    return faces
+    throw(ArgumentError("edge is not part of cell"))
 end
