@@ -124,19 +124,25 @@ function triangle_connectivities(mesh::Meshes.Mesh)
     return triangles
 end
 
-function orient_triangle_points(mesh::Meshes.Mesh, points::NTuple{3,Int})
-    x1, y1 = point_xy(mesh, points[1])
-    x2, y2 = point_xy(mesh, points[2])
-    x3, y3 = point_xy(mesh, points[3])
-    twice_area = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
-
-    twice_area > 0 && return points
-    twice_area < 0 && return (points[1], points[3], points[2])
-    throw(ArgumentError("Meshes triangle elements must have positive area"))
-end
-
 function oriented_triangle_connectivities(mesh::Meshes.Mesh)
-    return [orient_triangle_points(mesh, points) for points in triangle_connectivities(mesh)]
+    oriented = NTuple{3,Int}[]
+
+    for points in triangle_connectivities(mesh)
+        x1, y1 = point_xy(mesh, points[1])
+        x2, y2 = point_xy(mesh, points[2])
+        x3, y3 = point_xy(mesh, points[3])
+        twice_area = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
+
+        if twice_area > 0
+            push!(oriented, points)
+        elseif twice_area < 0
+            push!(oriented, (points[1], points[3], points[2]))
+        else
+            throw(ArgumentError("Meshes triangle elements must have positive area"))
+        end
+    end
+
+    return oriented
 end
 
 function triangle_count(mesh::Meshes.Mesh)
@@ -230,6 +236,15 @@ function facet_adjacencies(mesh::Meshes.Mesh)
     edge4pair = getproperty(topology, :edge4pair)
     points_by_edge = Dict(edge => point_ids for (point_ids, edge) in edge4pair)
 
+    local_edge_for_points(triangle_points::NTuple{3,Int}, edge_points::NTuple{2,Int}) = begin
+        for local_edge in 1:3
+            a, b = LOCAL_EDGES[local_edge]
+            ordered_edge(triangle_points[a], triangle_points[b]) == edge_points && return local_edge
+        end
+
+        throw(ArgumentError("edge is not part of triangle"))
+    end
+
     facets = FacetAdjacency[]
     sizehint!(facets, length(edge4pair))
 
@@ -252,13 +267,4 @@ function facet_adjacencies(mesh::Meshes.Mesh)
     end
 
     return facets
-end
-
-function local_edge_for_points(triangle_points::NTuple{3,Int}, edge_points::NTuple{2,Int})
-    for local_edge in 1:3
-        a, b = LOCAL_EDGES[local_edge]
-        ordered_edge(triangle_points[a], triangle_points[b]) == edge_points && return local_edge
-    end
-
-    throw(ArgumentError("edge is not part of triangle"))
 end

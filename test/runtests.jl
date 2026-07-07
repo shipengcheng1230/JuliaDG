@@ -73,6 +73,8 @@ end
     @test !applicable(JuliaDG.oriented_triangle_connectivities, legacy)
     @test !applicable(JuliaDG.triangle_count, legacy)
     @test !applicable(JuliaDG.triangle_points, legacy, 1)
+    @test !isdefined(JuliaDG, :orient_triangle_points)
+    @test !isdefined(JuliaDG, :local_edge_for_points)
     @test !isdefined(JuliaDG, :_facet_adjacencies_from_connectivities)
     @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
 
@@ -99,6 +101,11 @@ end
     @test JuliaDG.triangle_connectivities(clockwise) == [(1, 3, 2)]
     @test JuliaDG.triangle_points(clockwise, 1) == (1, 2, 3)
     @test JuliaDG.oriented_triangle_connectivities(clockwise) == [(1, 2, 3)]
+    @test map(facet -> (facet.point_ids, facet.triangles, facet.local_edges), JuliaDG.facet_adjacencies(clockwise)) == [
+        ((1, 2), (1, 0), (1, 0)),
+        ((2, 3), (1, 0), (2, 0)),
+        ((1, 3), (1, 0), (3, 0)),
+    ]
 end
 
 @testset "elastic state layout" begin
