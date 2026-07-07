@@ -2,12 +2,14 @@ module JuliaDG
 
 using LinearAlgebra
 using SparseArrays
+import Meshes
 
 export TriMesh,
     DGResult,
     ElasticMaterial,
     ElasticResult,
     unit_square_mesh,
+    mesh_backend,
     assemble_poisson_sipg,
     solve_poisson,
     solve_elastodynamics,

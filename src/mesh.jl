@@ -8,9 +8,43 @@ struct TriMesh{T<:Real}
     vertices::Matrix{T}
     cells::Matrix{Int}
     faces::Vector{TriFace}
+    backend
+end
+
+function TriMesh(
+    vertices::AbstractMatrix{T},
+    cells::AbstractMatrix{<:Integer},
+    faces::Vector{TriFace},
+) where {T<:Real}
+    vertices_matrix = Matrix{T}(vertices)
+    cells_matrix = Matrix{Int}(cells)
+    return TriMesh(vertices_matrix, cells_matrix, faces, meshes_simple_mesh(vertices_matrix, cells_matrix))
+end
+
+function TriMesh(
+    vertices::AbstractMatrix{T},
+    cells::AbstractMatrix{<:Integer},
+    faces::Vector{TriFace},
+    backend,
+) where {T<:Real}
+    return TriMesh{T}(Matrix{T}(vertices), Matrix{Int}(cells), faces, backend)
 end
 
 const LOCAL_EDGES = ((1, 2), (2, 3), (3, 1))
+
+mesh_backend(mesh::TriMesh) = mesh.backend
+
+function meshes_points(vertices::AbstractMatrix{<:Real})
+    return [Meshes.Point(vertices[1, vertex], vertices[2, vertex]) for vertex in axes(vertices, 2)]
+end
+
+function meshes_connectivities(cells::AbstractMatrix{<:Integer})
+    return [Meshes.connect(Tuple(Int.(cells[:, cell])), Meshes.Triangle) for cell in axes(cells, 2)]
+end
+
+function meshes_simple_mesh(vertices::AbstractMatrix{<:Real}, cells::AbstractMatrix{<:Integer})
+    return Meshes.SimpleMesh(meshes_points(vertices), meshes_connectivities(cells))
+end
 
 function unit_square_mesh(nx::Integer, ny::Integer)
     nx > 0 || throw(ArgumentError("nx must be positive"))

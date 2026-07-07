@@ -2,9 +2,13 @@ using LinearAlgebra
 using SparseArrays
 using Test
 using JuliaDG
+import Meshes
 
 @testset "mesh" begin
     mesh = unit_square_mesh(1, 1)
+    @test JuliaDG.mesh_backend(mesh) isa Meshes.Mesh
+    @test length(JuliaDG.mesh_backend(mesh)) == size(mesh.cells, 2)
+    @test getproperty(Meshes.topology(JuliaDG.mesh_backend(mesh)), :connec)[1].indices == (1, 2, 4)
     @test size(mesh.vertices) == (2, 4)
     @test size(mesh.cells) == (3, 2)
     @test length(mesh.faces) == 5
