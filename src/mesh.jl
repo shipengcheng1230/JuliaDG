@@ -79,11 +79,6 @@ function point_xy(mesh::Meshes.Mesh, point_id::Integer)
     return (plain_coordinate(coords.x), plain_coordinate(coords.y))
 end
 
-function point_xy(mesh::TriMesh, point_id::Integer)
-    id = Int(point_id)
-    return (Float64(mesh.vertices[1, id]), Float64(mesh.vertices[2, id]))
-end
-
 function vertices_matrix(mesh::Meshes.Mesh)
     points = Meshes.vertices(mesh)
     vertices = Matrix{Float64}(undef, 2, length(points))
@@ -129,9 +124,7 @@ function triangle_connectivities(mesh::Meshes.Mesh)
     return triangles
 end
 
-triangle_connectivities(mesh::TriMesh) = [Tuple(mesh.cells[:, triangle]) for triangle in axes(mesh.cells, 2)]
-
-function orient_triangle_points(mesh, points::NTuple{3,Int})
+function orient_triangle_points(mesh::Meshes.Mesh, points::NTuple{3,Int})
     x1, y1 = point_xy(mesh, points[1])
     x2, y2 = point_xy(mesh, points[2])
     x3, y3 = point_xy(mesh, points[3])
@@ -142,15 +135,15 @@ function orient_triangle_points(mesh, points::NTuple{3,Int})
     throw(ArgumentError("Meshes triangle elements must have positive area"))
 end
 
-function oriented_triangle_connectivities(mesh)
+function oriented_triangle_connectivities(mesh::Meshes.Mesh)
     return [orient_triangle_points(mesh, points) for points in triangle_connectivities(mesh)]
 end
 
-function triangle_count(mesh)
+function triangle_count(mesh::Meshes.Mesh)
     return length(oriented_triangle_connectivities(mesh))
 end
 
-function triangle_points(mesh, triangle::Integer)
+function triangle_points(mesh::Meshes.Mesh, triangle::Integer)
     triangles = oriented_triangle_connectivities(mesh)
     index = Int(triangle)
     1 <= index <= length(triangles) || throw(ArgumentError("triangle out of range"))
@@ -229,7 +222,7 @@ function local_edge_for_vertices(cell_vertices::NTuple{3,Int}, edge_vertices::NT
     throw(ArgumentError("edge is not part of cell"))
 end
 
-function facet_adjacencies(mesh)
+function facet_adjacencies(mesh::Meshes.Mesh)
     return facet_adjacencies(oriented_triangle_connectivities(mesh))
 end
 
