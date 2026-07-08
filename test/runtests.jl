@@ -70,6 +70,45 @@ end
     @test JuliaDG.triangle_points(raw, 1) == (1, 2, 4)
     @test JuliaDG.triangle_points(raw, 2) == (1, 4, 3)
 
+    struct IteratorOnlyConnectivity
+        indices::NTuple{3,Int}
+    end
+
+    struct IteratorOnlyConnectivities
+        items::Vector{IteratorOnlyConnectivity}
+    end
+
+    Base.iterate(connectivities::IteratorOnlyConnectivities, state::Int=1) =
+        state > length(connectivities.items) ? nothing : (connectivities.items[state], state + 1)
+    Base.length(::IteratorOnlyConnectivities) = error("length is not supported")
+    Base.getindex(::IteratorOnlyConnectivities, ::Int) = error("indexing is not supported")
+
+    struct IteratorOnlyTopology <: Meshes.Topology
+        connec::IteratorOnlyConnectivities
+    end
+
+    IteratorOnlyPoint = typeof(Meshes.Point(0.0, 0.0))
+    IteratorOnlyCRS = typeof(Meshes.coords(Meshes.Point(0.0, 0.0)))
+
+    struct IteratorOnlyMesh <: Meshes.Mesh{Meshes.𝔼{2}, IteratorOnlyCRS, IteratorOnlyTopology}
+        vertices::Vector{IteratorOnlyPoint}
+        topology::IteratorOnlyTopology
+    end
+
+    Meshes.vertices(mesh::IteratorOnlyMesh) = mesh.vertices
+    Meshes.topology(mesh::IteratorOnlyMesh) = mesh.topology
+
+    iterator_only = IteratorOnlyMesh(
+        [
+            Meshes.Point(0.0, 0.0),
+            Meshes.Point(1.0, 0.0),
+            Meshes.Point(0.0, 1.0),
+        ],
+        IteratorOnlyTopology(IteratorOnlyConnectivities([IteratorOnlyConnectivity((1, 3, 2))])),
+    )
+
+    @test JuliaDG.triangle_points(iterator_only, 1) == (1, 2, 3)
+
     facets = JuliaDG.facet_adjacencies(raw)
     @test length(facets) == 5
     @test count(facet -> facet.triangles[2] == 0, facets) == 4

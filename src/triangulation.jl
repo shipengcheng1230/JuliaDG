@@ -90,21 +90,27 @@ function triangle_points(mesh::Meshes.Mesh, triangle::Integer)
     hasproperty(topology, :connec) ||
         throw(ArgumentError("only Meshes meshes with connectivity topology are supported"))
 
-    connectivities = getproperty(topology, :connec)
-    index <= length(connectivities) || throw(ArgumentError("triangle out of range"))
+    function oriented_points(ids)
+        points = (Int(ids[1]), Int(ids[2]), Int(ids[3]))
+        x1, y1 = point_xy(mesh, points[1])
+        x2, y2 = point_xy(mesh, points[2])
+        x3, y3 = point_xy(mesh, points[3])
+        twice_area = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
 
-    ids = getproperty(connectivities[index], :indices)
-    length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        twice_area > 0 && return points
+        twice_area < 0 && return (points[1], points[3], points[2])
+        throw(ArgumentError("Meshes triangle elements must have positive area"))
+    end
 
-    points = (Int(ids[1]), Int(ids[2]), Int(ids[3]))
-    x1, y1 = point_xy(mesh, points[1])
-    x2, y2 = point_xy(mesh, points[2])
-    x3, y3 = point_xy(mesh, points[3])
-    twice_area = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
+    count = 0
+    for connectivity in getproperty(topology, :connec)
+        count += 1
+        ids = getproperty(connectivity, :indices)
+        length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        count == index && return oriented_points(ids)
+    end
 
-    twice_area > 0 && return points
-    twice_area < 0 && return (points[1], points[3], points[2])
-    throw(ArgumentError("Meshes triangle elements must have positive area"))
+    throw(ArgumentError("triangle out of range"))
 end
 
 function facet_adjacencies(mesh::Meshes.Mesh)
