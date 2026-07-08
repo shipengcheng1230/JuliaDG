@@ -21,9 +21,18 @@ end
 
 function evaluate_solution(result::DGResult, x::Real, y::Real)
     triangles = oriented_triangle_connectivities(result.mesh)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            px, py = point_xy(result.mesh, points[local_index])
+            coords[1, local_index] = px
+            coords[2, local_index] = py
+        end
+        coords
+    end
 
     for (triangle, points) in pairs(triangles)
-        coords = triangle_coordinates(result.mesh, points)
+        coords = coordinates_for(points)
         lambdas = barycentric_coordinates(coords, x, y)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
@@ -41,9 +50,18 @@ end
 function l2_error(result::DGResult, exact)
     error_squared = 0.0
     triangles = oriented_triangle_connectivities(result.mesh)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            px, py = point_xy(result.mesh, points[local_index])
+            coords[1, local_index] = px
+            coords[2, local_index] = py
+        end
+        coords
+    end
 
     for (triangle, points) in pairs(triangles)
-        coords = triangle_coordinates(result.mesh, points)
+        coords = coordinates_for(points)
         area, _ = triangle_geometry(coords)
 
         for (lambdas, weight) in TRIANGLE_QUADRATURE

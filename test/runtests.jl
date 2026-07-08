@@ -408,7 +408,7 @@ end
 
     @test area ≈ 0.5
     @test grads[:, 1] + grads[:, 2] + grads[:, 3] ≈ zeros(2)
-    @test JuliaDG.triangle_coordinates(mesh, points) == coords
+    @test !applicable(JuliaDG.triangle_coordinates, mesh, points)
 
     centroid = (
         sum(coords[1, i] for i in 1:3) / 3,
@@ -423,16 +423,12 @@ end
     normal, edge_len = JuliaDG.edge_normal(mesh, 1, 1)
     @test collect(normal) ≈ [0.0, -1.0]
     @test edge_len ≈ 1.0
-    tuple_normal, tuple_edge_len = JuliaDG.edge_normal(mesh, points, 1)
-    @test tuple_normal == normal
-    @test tuple_edge_len == edge_len
+    @test !applicable(JuliaDG.edge_normal, mesh, points, 1)
 
     x, y = JuliaDG.edge_point(mesh, 1, 1, 0.25)
     @test x ≈ 0.25
     @test y ≈ 0.0
-    tuple_x, tuple_y = JuliaDG.edge_point(mesh, points, 1, 0.25)
-    @test tuple_x == x
-    @test tuple_y == y
+    @test !applicable(JuliaDG.edge_point, mesh, points, 1, 0.25)
 end
 
 @testset "solve and postprocess" begin

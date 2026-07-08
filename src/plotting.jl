@@ -9,10 +9,19 @@ function dg_plot_data(result::DGResult)
     ys = Vector{Float64}(undef, expected_coeffs)
     values = Vector{Float64}(undef, expected_coeffs)
     triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            x, y = point_xy(result.mesh, points[local_index])
+            coords[1, local_index] = x
+            coords[2, local_index] = y
+        end
+        coords
+    end
 
     point_index = 1
     for (triangle, points) in pairs(cell_points)
-        coords = triangle_coordinates(result.mesh, points)
+        coords = coordinates_for(points)
         first_point = point_index
 
         for local_index in 1:3
@@ -52,10 +61,19 @@ function elastic_plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:v
     values = Vector{Float64}(undef, npoints)
     triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
     field_index = elastic_plot_field_index(field)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            x, y = point_xy(mesh, points[local_index])
+            coords[1, local_index] = x
+            coords[2, local_index] = y
+        end
+        coords
+    end
 
     point_index = 1
     for (triangle, points) in pairs(cell_points)
-        coords = triangle_coordinates(mesh, points)
+        coords = coordinates_for(points)
         first_point = point_index
 
         for local_index in 1:ELASTIC_LOCAL_DOF_COUNT

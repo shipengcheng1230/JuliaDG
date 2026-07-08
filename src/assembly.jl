@@ -25,8 +25,18 @@ normal_dot(grads::AbstractMatrix{<:Real}, local_index::Integer, normal) =
     grads[1, local_index] * normal[1] + grads[2, local_index] * normal[2]
 
 function assemble_triangle_terms!(rows, cols, values, b, mesh, f, triangles)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            x, y = point_xy(mesh, points[local_index])
+            coords[1, local_index] = x
+            coords[2, local_index] = y
+        end
+        coords
+    end
+
     for (triangle, points) in pairs(triangles)
-        coords = triangle_coordinates(mesh, points)
+        coords = coordinates_for(points)
         area, grads = triangle_geometry(coords)
 
         for test_local in 1:3
@@ -63,14 +73,39 @@ function assemble_face_terms!(rows, cols, values, b, mesh, g, penalty::Float64, 
 end
 
 function assemble_interior_face!(rows, cols, values, mesh, triangles, facet::FacetAdjacency, penalty::Float64)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            x, y = point_xy(mesh, points[local_index])
+            coords[1, local_index] = x
+            coords[2, local_index] = y
+        end
+        coords
+    end
+    edge_normal_for(points, local_edge) = begin
+        start_index, end_index = LOCAL_EDGES[local_edge]
+        x1, y1 = point_xy(mesh, points[start_index])
+        x2, y2 = point_xy(mesh, points[end_index])
+        dx = x2 - x1
+        dy = y2 - y1
+        edge_len = hypot(dx, dy)
+        ((dy / edge_len, -dx / edge_len), edge_len)
+    end
+    edge_point_for(points, local_edge, s) = begin
+        start_index, end_index = LOCAL_EDGES[local_edge]
+        x1, y1 = point_xy(mesh, points[start_index])
+        x2, y2 = point_xy(mesh, points[end_index])
+        ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
+    end
+
     left_triangle, right_triangle = facet.triangles
     left_edge, right_edge = facet.local_edges
     left_points = triangles[left_triangle]
     right_points = triangles[right_triangle]
 
-    normal, h_face = edge_normal(mesh, left_points, left_edge)
-    left_coords = triangle_coordinates(mesh, left_points)
-    right_coords = triangle_coordinates(mesh, right_points)
+    normal, h_face = edge_normal_for(left_points, left_edge)
+    left_coords = coordinates_for(left_points)
+    right_coords = coordinates_for(right_points)
     _, left_grads = triangle_geometry(left_coords)
     _, right_grads = triangle_geometry(right_coords)
 
@@ -79,7 +114,7 @@ function assemble_interior_face!(rows, cols, values, mesh, triangles, facet::Fac
     jump_signs = (1.0, -1.0)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, left_points, left_edge, s)
+        x, y = edge_point_for(left_points, left_edge, s)
         left_phi = basis_values_at_point(left_coords, x, y)
         right_phi = basis_values_at_point(right_coords, x, y)
         side_phi = (left_phi, right_phi)
@@ -115,16 +150,41 @@ function assemble_interior_face!(rows, cols, values, mesh, triangles, facet::Fac
 end
 
 function assemble_boundary_face!(rows, cols, values, b, mesh, triangles, facet::FacetAdjacency, g, penalty::Float64)
+    coordinates_for(points) = begin
+        coords = Matrix{Float64}(undef, 2, 3)
+        for local_index in 1:3
+            x, y = point_xy(mesh, points[local_index])
+            coords[1, local_index] = x
+            coords[2, local_index] = y
+        end
+        coords
+    end
+    edge_normal_for(points, local_edge) = begin
+        start_index, end_index = LOCAL_EDGES[local_edge]
+        x1, y1 = point_xy(mesh, points[start_index])
+        x2, y2 = point_xy(mesh, points[end_index])
+        dx = x2 - x1
+        dy = y2 - y1
+        edge_len = hypot(dx, dy)
+        ((dy / edge_len, -dx / edge_len), edge_len)
+    end
+    edge_point_for(points, local_edge, s) = begin
+        start_index, end_index = LOCAL_EDGES[local_edge]
+        x1, y1 = point_xy(mesh, points[start_index])
+        x2, y2 = point_xy(mesh, points[end_index])
+        ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
+    end
+
     triangle = facet.triangles[1]
     local_edge = facet.local_edges[1]
     points = triangles[triangle]
 
-    normal, h_face = edge_normal(mesh, points, local_edge)
-    coords = triangle_coordinates(mesh, points)
+    normal, h_face = edge_normal_for(points, local_edge)
+    coords = coordinates_for(points)
     _, grads = triangle_geometry(coords)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, points, local_edge, s)
+        x, y = edge_point_for(points, local_edge, s)
         phi = basis_values_at_point(coords, x, y)
         g_value = g(x, y)
         weight = h_face * weight_1d
