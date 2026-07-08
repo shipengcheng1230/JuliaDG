@@ -194,9 +194,11 @@ end
     @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
     triangles = JuliaDG.oriented_triangle_connectivities(mesh)
     facets = JuliaDG.facet_adjacencies(mesh)
-    @test JuliaDG.elastic_rhs(state, mesh, triangles, facets, material, :reflecting) ≈ zeros(ndofs)
-    @test JuliaDG.elastic_rhs(state, mesh, triangles, facets, material, :reflecting) ≈
-          JuliaDG.elastic_rhs(state, mesh, material, :reflecting)
+    @test !applicable(JuliaDG.interpolate_elastic_state, (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0), mesh, triangles)
+    @test !applicable(JuliaDG.elastic_rhs, state, mesh, triangles, facets, material, :reflecting)
+    @test !applicable(JuliaDG.minimum_edge_length, mesh, triangles, facets)
+    @test !applicable(JuliaDG.default_elastic_dt, mesh, material, 0.1, triangles, facets)
+    @test !applicable(JuliaDG.ssprk3_step, state, 0.01, mesh, triangles, facets, material, :reflecting)
     @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
     @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
     reflected = JuliaDG.boundary_state(interior, normal, :reflecting)
@@ -292,6 +294,8 @@ end
     @test length(cfl_result.energy_history) == length(cfl_result.times)
     @test all(isfinite, cfl_result.energy_history)
     @test norm(cfl_result.state) ≈ 0.0 atol = 1.0e-12
+    @test JuliaDG.default_elastic_dt(cfl_result.mesh, cfl_result.material, 0.1) > 0.0
+    @test JuliaDG.minimum_edge_length(cfl_result.mesh) > 0.0
 
     history_result = solve_elastodynamics(
         tuple_zero_initial;
