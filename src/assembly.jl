@@ -1,8 +1,3 @@
-function assemble_triangle_terms! end
-function assemble_face_terms! end
-function assemble_interior_face! end
-function assemble_boundary_face! end
-
 function assemble_poisson_sipg(mesh, f, g; penalty::Real=20.0)
     triangles = oriented_triangle_connectivities(mesh)
     facets = facet_adjacencies(mesh)

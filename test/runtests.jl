@@ -194,40 +194,15 @@ end
     @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
     triangles = JuliaDG.oriented_triangle_connectivities(mesh)
     facets = JuliaDG.facet_adjacencies(mesh)
-    boundary_facet = first(filter(facet -> facet.triangles[2] == 0, facets))
-    interior_facet = first(filter(facet -> facet.triangles[2] != 0, facets))
     @test !applicable(JuliaDG.interpolate_elastic_state, (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0), mesh, triangles)
     @test !applicable(JuliaDG.elastic_rhs, state, mesh, triangles, facets, material, :reflecting)
     @test !applicable(JuliaDG.minimum_edge_length, mesh, triangles, facets)
     @test !applicable(JuliaDG.default_elastic_dt, mesh, material, 0.1, triangles, facets)
     @test !applicable(JuliaDG.ssprk3_step, state, 0.01, mesh, triangles, facets, material, :reflecting)
-    @test !applicable(JuliaDG.add_elastic_volume_terms!, zeros(ndofs), state, mesh, 1, triangles[1], material, length(triangles))
-    @test !applicable(
-        JuliaDG.add_elastic_interior_face!,
-        zeros(ndofs),
-        state,
-        mesh,
-        interior_facet.triangles[1],
-        triangles[interior_facet.triangles[1]],
-        interior_facet.triangles[2],
-        triangles[interior_facet.triangles[2]],
-        interior_facet.local_edges[1],
-        material,
-        length(triangles),
-    )
-    @test !applicable(
-        JuliaDG.add_elastic_boundary_face!,
-        zeros(ndofs),
-        state,
-        mesh,
-        boundary_facet.triangles[1],
-        triangles[boundary_facet.triangles[1]],
-        boundary_facet.local_edges[1],
-        material,
-        :reflecting,
-        length(triangles),
-    )
-    @test !applicable(JuliaDG.elastic_triangle_energy, state, mesh, 1, triangles[1], material, length(triangles))
+    @test !isdefined(JuliaDG, :add_elastic_volume_terms!)
+    @test !isdefined(JuliaDG, :add_elastic_interior_face!)
+    @test !isdefined(JuliaDG, :add_elastic_boundary_face!)
+    @test !isdefined(JuliaDG, :elastic_triangle_energy)
     @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
     @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
     reflected = JuliaDG.boundary_state(interior, normal, :reflecting)
@@ -428,19 +403,10 @@ end
     @test length(b_raw) == raw_ndofs
     @test isapprox(norm(Matrix(A_raw - transpose(A_raw))), 0.0; atol=1.0e-10)
 
-    triangles = JuliaDG.oriented_triangle_connectivities(mesh)
-    facets = JuliaDG.facet_adjacencies(mesh)
-    boundary_facet = first(filter(facet -> facet.triangles[2] == 0, facets))
-    interior_facet = first(filter(facet -> facet.triangles[2] != 0, facets))
-    rows = Int[]
-    cols = Int[]
-    values = Float64[]
-    rhs = zeros(ndofs)
-
-    @test !applicable(JuliaDG.assemble_triangle_terms!, rows, cols, values, rhs, mesh, f, triangles)
-    @test !applicable(JuliaDG.assemble_face_terms!, rows, cols, values, rhs, mesh, g, 20.0, triangles)
-    @test !applicable(JuliaDG.assemble_interior_face!, rows, cols, values, mesh, triangles, interior_facet, 20.0)
-    @test !applicable(JuliaDG.assemble_boundary_face!, rows, cols, values, rhs, mesh, triangles, boundary_facet, g, 20.0)
+    @test !isdefined(JuliaDG, :assemble_triangle_terms!)
+    @test !isdefined(JuliaDG, :assemble_face_terms!)
+    @test !isdefined(JuliaDG, :assemble_interior_face!)
+    @test !isdefined(JuliaDG, :assemble_boundary_face!)
 end
 
 @testset "basis geometry" begin

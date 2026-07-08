@@ -193,11 +193,6 @@ function traction_free_stress(sxx::Real, syy::Real, sxy::Real, normal)
     return (ghost_sxx, ghost_syy, ghost_sxy)
 end
 
-function add_elastic_volume_terms! end
-function add_elastic_interior_face! end
-function add_elastic_boundary_face! end
-function elastic_triangle_energy end
-
 function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMaterial, boundary::Symbol)
     validate_elastic_boundary(boundary)
     triangles = oriented_triangle_connectivities(mesh)
