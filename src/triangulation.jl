@@ -49,10 +49,54 @@ function triangle_connectivities(mesh::Meshes.Mesh)
 end
 
 function oriented_triangle_connectivities(mesh::Meshes.Mesh)
-    return [orient_triangle_points(mesh, points) for points in triangle_connectivities(mesh)]
+    triangles = triangle_connectivities(mesh)
+
+    for (index, points) in pairs(triangles)
+        x1, y1 = point_xy(mesh, points[1])
+        x2, y2 = point_xy(mesh, points[2])
+        x3, y3 = point_xy(mesh, points[3])
+        twice_area = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
+
+        if twice_area < 0
+            triangles[index] = (points[1], points[3], points[2])
+        elseif twice_area == 0
+            throw(ArgumentError("Meshes triangle elements must have positive area"))
+        end
+    end
+
+    return triangles
 end
 
-function orient_triangle_points(mesh::Meshes.Mesh, points::NTuple{3,Int})
+function triangle_count(mesh::Meshes.Mesh)
+    topology = Meshes.topology(mesh)
+    hasproperty(topology, :connec) ||
+        throw(ArgumentError("only Meshes meshes with connectivity topology are supported"))
+
+    count = 0
+    for connectivity in getproperty(topology, :connec)
+        ids = getproperty(connectivity, :indices)
+        length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        count += 1
+    end
+
+    return count
+end
+
+function triangle_points(mesh::Meshes.Mesh, triangle::Integer)
+    index = Int(triangle)
+    index >= 1 || throw(ArgumentError("triangle out of range"))
+
+    topology = Meshes.topology(mesh)
+    hasproperty(topology, :connec) ||
+        throw(ArgumentError("only Meshes meshes with connectivity topology are supported"))
+
+    connectivities = getproperty(topology, :connec)
+    index <= length(connectivities) || throw(ArgumentError("triangle out of range"))
+
+    ids = getproperty(connectivities[index], :indices)
+    length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+
+    points = (Int(ids[1]), Int(ids[2]), Int(ids[3]))
     x1, y1 = point_xy(mesh, points[1])
     x2, y2 = point_xy(mesh, points[2])
     x3, y3 = point_xy(mesh, points[3])
@@ -63,27 +107,23 @@ function orient_triangle_points(mesh::Meshes.Mesh, points::NTuple{3,Int})
     throw(ArgumentError("Meshes triangle elements must have positive area"))
 end
 
-function triangle_count(mesh::Meshes.Mesh)
-    return length(oriented_triangle_connectivities(mesh))
-end
-
-function triangle_points(mesh::Meshes.Mesh, triangle::Integer)
-    triangles = oriented_triangle_connectivities(mesh)
-    index = Int(triangle)
-    1 <= index <= length(triangles) || throw(ArgumentError("triangle out of range"))
-    return triangles[index]
-end
-
 function facet_adjacencies(mesh::Meshes.Mesh)
-    return facet_adjacencies(oriented_triangle_connectivities(mesh))
-end
-
-function facet_adjacencies(triangles::Vector{NTuple{3,Int}})
+    triangles = oriented_triangle_connectivities(mesh)
     connectivities = [Meshes.connect(points, Meshes.Triangle) for points in triangles]
     topology = Meshes.HalfEdgeTopology(connectivities; sort=false)
     edge_triangles = Meshes.Coboundary{1,2}(topology)
     edge4pair = getproperty(topology, :edge4pair)
     points_by_edge = Dict(edge => point_ids for (point_ids, edge) in edge4pair)
+    ordered_edge(a::Int, b::Int) = a < b ? (a, b) : (b, a)
+
+    function local_edge_for_points(triangle_points::NTuple{3,Int}, edge_points::NTuple{2,Int})
+        for local_edge in 1:3
+            a, b = LOCAL_EDGES[local_edge]
+            ordered_edge(triangle_points[a], triangle_points[b]) == edge_points && return local_edge
+        end
+
+        throw(ArgumentError("edge is not part of triangle"))
+    end
 
     facets = FacetAdjacency[]
     sizehint!(facets, length(edge4pair))
@@ -107,15 +147,4 @@ function facet_adjacencies(triangles::Vector{NTuple{3,Int}})
     end
 
     return facets
-end
-
-ordered_edge(a::Int, b::Int) = a < b ? (a, b) : (b, a)
-
-function local_edge_for_points(triangle_points::NTuple{3,Int}, edge_points::NTuple{2,Int})
-    for local_edge in 1:3
-        a, b = LOCAL_EDGES[local_edge]
-        ordered_edge(triangle_points[a], triangle_points[b]) == edge_points && return local_edge
-    end
-
-    throw(ArgumentError("edge is not part of triangle"))
 end

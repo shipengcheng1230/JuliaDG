@@ -59,6 +59,9 @@ end
     raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
 
     @test raw isa Meshes.Mesh
+    @test !isdefined(JuliaDG, :orient_triangle_points)
+    @test !isdefined(JuliaDG, :local_edge_for_points)
+    @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
     @test JuliaDG.point_xy(raw, 1) == (0.0, 0.0)
     @test JuliaDG.point_xy(raw, 4) == (1.0, 1.0)
     @test JuliaDG.triangle_connectivities(raw) == [(1, 2, 4), (1, 4, 3)]
