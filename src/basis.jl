@@ -25,9 +25,8 @@ function triangle_geometry(coords::AbstractMatrix{<:Real})
     return 0.5 * det_j, grads
 end
 
-function triangle_coordinates(mesh, triangle::Integer)
+function triangle_coordinates(mesh, points::NTuple{3,Int})
     coords = Matrix{Float64}(undef, 2, 3)
-    points = triangle_points(mesh, triangle)
 
     for local_index in 1:3
         x, y = point_xy(mesh, points[local_index])
@@ -37,6 +36,8 @@ function triangle_coordinates(mesh, triangle::Integer)
 
     return coords
 end
+
+triangle_coordinates(mesh, triangle::Integer) = triangle_coordinates(mesh, triangle_points(mesh, triangle))
 
 triangle_geometry(mesh, triangle::Integer) = triangle_geometry(triangle_coordinates(mesh, triangle))
 
@@ -67,9 +68,8 @@ function point_in_triangle(coords::AbstractMatrix{<:Real}, x::Real, y::Real; tol
     return all(lambda -> lambda >= -tol && lambda <= 1 + tol, lambdas)
 end
 
-function edge_normal(mesh, triangle::Integer, local_edge::Integer)
+function edge_normal(mesh, points::NTuple{3,Int}, local_edge::Integer)
     a, b = LOCAL_EDGES[local_edge]
-    points = triangle_points(mesh, triangle)
     x1, y1 = point_xy(mesh, points[a])
     x2, y2 = point_xy(mesh, points[b])
 
@@ -80,11 +80,16 @@ function edge_normal(mesh, triangle::Integer, local_edge::Integer)
     return ((dy / edge_len, -dx / edge_len), edge_len)
 end
 
-function edge_point(mesh, triangle::Integer, local_edge::Integer, s::Real)
+edge_normal(mesh, triangle::Integer, local_edge::Integer) =
+    edge_normal(mesh, triangle_points(mesh, triangle), local_edge)
+
+function edge_point(mesh, points::NTuple{3,Int}, local_edge::Integer, s::Real)
     a, b = LOCAL_EDGES[local_edge]
-    points = triangle_points(mesh, triangle)
     x1, y1 = point_xy(mesh, points[a])
     x2, y2 = point_xy(mesh, points[b])
 
     return ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
 end
+
+edge_point(mesh, triangle::Integer, local_edge::Integer, s::Real) =
+    edge_point(mesh, triangle_points(mesh, triangle), local_edge, s)

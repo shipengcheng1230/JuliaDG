@@ -1,12 +1,13 @@
 function assemble_poisson_sipg(mesh, f, g; penalty::Real=20.0)
-    ndofs = 3 * triangle_count(mesh)
+    triangles = oriented_triangle_connectivities(mesh)
+    ndofs = 3 * length(triangles)
     rows = Int[]
     cols = Int[]
     values = Float64[]
     b = zeros(Float64, ndofs)
 
-    assemble_triangle_terms!(rows, cols, values, b, mesh, f)
-    assemble_face_terms!(rows, cols, values, b, mesh, g, Float64(penalty))
+    assemble_triangle_terms!(rows, cols, values, b, mesh, f, triangles)
+    assemble_face_terms!(rows, cols, values, b, mesh, g, Float64(penalty), triangles)
 
     return sparse(rows, cols, values, ndofs, ndofs), b
 end
@@ -23,9 +24,9 @@ end
 normal_dot(grads::AbstractMatrix{<:Real}, local_index::Integer, normal) =
     grads[1, local_index] * normal[1] + grads[2, local_index] * normal[2]
 
-function assemble_triangle_terms!(rows, cols, values, b, mesh, f)
-    for triangle in 1:triangle_count(mesh)
-        coords = triangle_coordinates(mesh, triangle)
+function assemble_triangle_terms!(rows, cols, values, b, mesh, f, triangles)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(mesh, points)
         area, grads = triangle_geometry(coords)
 
         for test_local in 1:3
@@ -49,25 +50,27 @@ function assemble_triangle_terms!(rows, cols, values, b, mesh, f)
     return nothing
 end
 
-function assemble_face_terms!(rows, cols, values, b, mesh, g, penalty::Float64)
+function assemble_face_terms!(rows, cols, values, b, mesh, g, penalty::Float64, triangles)
     for facet in facet_adjacencies(mesh)
         if facet.triangles[2] == 0
-            assemble_boundary_face!(rows, cols, values, b, mesh, facet, g, penalty)
+            assemble_boundary_face!(rows, cols, values, b, mesh, triangles, facet, g, penalty)
         else
-            assemble_interior_face!(rows, cols, values, mesh, facet, penalty)
+            assemble_interior_face!(rows, cols, values, mesh, triangles, facet, penalty)
         end
     end
 
     return nothing
 end
 
-function assemble_interior_face!(rows, cols, values, mesh, facet::FacetAdjacency, penalty::Float64)
+function assemble_interior_face!(rows, cols, values, mesh, triangles, facet::FacetAdjacency, penalty::Float64)
     left_triangle, right_triangle = facet.triangles
     left_edge, right_edge = facet.local_edges
+    left_points = triangles[left_triangle]
+    right_points = triangles[right_triangle]
 
-    normal, h_face = edge_normal(mesh, left_triangle, left_edge)
-    left_coords = triangle_coordinates(mesh, left_triangle)
-    right_coords = triangle_coordinates(mesh, right_triangle)
+    normal, h_face = edge_normal(mesh, left_points, left_edge)
+    left_coords = triangle_coordinates(mesh, left_points)
+    right_coords = triangle_coordinates(mesh, right_points)
     _, left_grads = triangle_geometry(left_coords)
     _, right_grads = triangle_geometry(right_coords)
 
@@ -76,7 +79,7 @@ function assemble_interior_face!(rows, cols, values, mesh, facet::FacetAdjacency
     jump_signs = (1.0, -1.0)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, left_triangle, left_edge, s)
+        x, y = edge_point(mesh, left_points, left_edge, s)
         left_phi = basis_values_at_point(left_coords, x, y)
         right_phi = basis_values_at_point(right_coords, x, y)
         side_phi = (left_phi, right_phi)
@@ -111,16 +114,17 @@ function assemble_interior_face!(rows, cols, values, mesh, facet::FacetAdjacency
     return nothing
 end
 
-function assemble_boundary_face!(rows, cols, values, b, mesh, facet::FacetAdjacency, g, penalty::Float64)
+function assemble_boundary_face!(rows, cols, values, b, mesh, triangles, facet::FacetAdjacency, g, penalty::Float64)
     triangle = facet.triangles[1]
     local_edge = facet.local_edges[1]
+    points = triangles[triangle]
 
-    normal, h_face = edge_normal(mesh, triangle, local_edge)
-    coords = triangle_coordinates(mesh, triangle)
+    normal, h_face = edge_normal(mesh, points, local_edge)
+    coords = triangle_coordinates(mesh, points)
     _, grads = triangle_geometry(coords)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, triangle, local_edge, s)
+        x, y = edge_point(mesh, points, local_edge, s)
         phi = basis_values_at_point(coords, x, y)
         g_value = g(x, y)
         weight = h_face * weight_1d

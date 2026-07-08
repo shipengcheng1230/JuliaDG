@@ -20,8 +20,10 @@ function solve_poisson(
 end
 
 function evaluate_solution(result::DGResult, x::Real, y::Real)
-    for triangle in 1:triangle_count(result.mesh)
-        coords = triangle_coordinates(result.mesh, triangle)
+    triangles = oriented_triangle_connectivities(result.mesh)
+
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(result.mesh, points)
         lambdas = barycentric_coordinates(coords, x, y)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
@@ -38,9 +40,10 @@ end
 
 function l2_error(result::DGResult, exact)
     error_squared = 0.0
+    triangles = oriented_triangle_connectivities(result.mesh)
 
-    for triangle in 1:triangle_count(result.mesh)
-        coords = triangle_coordinates(result.mesh, triangle)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(result.mesh, points)
         area, _ = triangle_geometry(coords)
 
         for (lambdas, weight) in TRIANGLE_QUADRATURE

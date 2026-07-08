@@ -59,11 +59,12 @@ function elastic_components(value)
 end
 
 function interpolate_elastic_state(initial, mesh)
-    triangle_total = triangle_count(mesh)
+    triangles = oriented_triangle_connectivities(mesh)
+    triangle_total = length(triangles)
     state = zeros(Float64, ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total)
 
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(mesh, triangle)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(mesh, points)
         for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
             values = elastic_components(initial(coords[1, local_index], coords[2, local_index]))
             for field in 1:ELASTIC_FIELD_COUNT
@@ -186,20 +187,21 @@ end
 function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMaterial, boundary::Symbol)
     validate_elastic_boundary(boundary)
 
-    triangle_total = triangle_count(mesh)
+    triangles = oriented_triangle_connectivities(mesh)
+    triangle_total = length(triangles)
     expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_length ||
         throw(ArgumentError("elastic state length does not match mesh"))
 
     residual = zeros(Float64, expected_length)
-    add_elastic_volume_terms!(residual, state, mesh, material, triangle_total)
-    add_elastic_face_terms!(residual, state, mesh, material, boundary, triangle_total)
-    return apply_elastic_mass_inverse(residual, mesh, triangle_total)
+    add_elastic_volume_terms!(residual, state, mesh, triangles, material, triangle_total)
+    add_elastic_face_terms!(residual, state, mesh, triangles, material, boundary, triangle_total)
+    return apply_elastic_mass_inverse(residual, mesh, triangles, triangle_total)
 end
 
-function add_elastic_volume_terms!(residual, state, mesh, material::ElasticMaterial, triangle_total::Integer)
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(mesh, triangle)
+function add_elastic_volume_terms!(residual, state, mesh, triangles, material::ElasticMaterial, triangle_total::Integer)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(mesh, points)
         area, grads = triangle_geometry(coords)
 
         for (lambdas, weight) in TRIANGLE_QUADRATURE
@@ -225,30 +227,50 @@ function add_elastic_face_terms!(
     residual,
     state,
     mesh,
+    triangles,
     material::ElasticMaterial,
     boundary::Symbol,
     triangle_total::Integer,
 )
     for facet in facet_adjacencies(mesh)
         if facet.triangles[2] == 0
-            add_elastic_boundary_face!(residual, state, mesh, facet, material, boundary, triangle_total)
+            add_elastic_boundary_face!(
+                residual,
+                state,
+                mesh,
+                triangles,
+                facet,
+                material,
+                boundary,
+                triangle_total,
+            )
         else
-            add_elastic_interior_face!(residual, state, mesh, facet, material, triangle_total)
+            add_elastic_interior_face!(residual, state, mesh, triangles, facet, material, triangle_total)
         end
     end
 
     return nothing
 end
 
-function add_elastic_interior_face!(residual, state, mesh, facet::FacetAdjacency, material::ElasticMaterial, triangle_total::Integer)
+function add_elastic_interior_face!(
+    residual,
+    state,
+    mesh,
+    triangles,
+    facet::FacetAdjacency,
+    material::ElasticMaterial,
+    triangle_total::Integer,
+)
     left_triangle, right_triangle = facet.triangles
     left_edge, right_edge = facet.local_edges
-    normal, edge_length = edge_normal(mesh, left_triangle, left_edge)
-    left_coords = triangle_coordinates(mesh, left_triangle)
-    right_coords = triangle_coordinates(mesh, right_triangle)
+    left_points = triangles[left_triangle]
+    right_points = triangles[right_triangle]
+    normal, edge_length = edge_normal(mesh, left_points, left_edge)
+    left_coords = triangle_coordinates(mesh, left_points)
+    right_coords = triangle_coordinates(mesh, right_points)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, left_triangle, left_edge, s)
+        x, y = edge_point(mesh, left_points, left_edge, s)
         left_phi = basis_values_at_point(left_coords, x, y)
         right_phi = basis_values_at_point(right_coords, x, y)
         left_state = state_at_point(state, left_triangle, left_phi, triangle_total)
@@ -273,6 +295,7 @@ function add_elastic_boundary_face!(
     residual,
     state,
     mesh,
+    triangles,
     facet::FacetAdjacency,
     material::ElasticMaterial,
     boundary::Symbol,
@@ -280,11 +303,12 @@ function add_elastic_boundary_face!(
 )
     triangle = facet.triangles[1]
     local_edge = facet.local_edges[1]
-    normal, edge_length = edge_normal(mesh, triangle, local_edge)
-    coords = triangle_coordinates(mesh, triangle)
+    points = triangles[triangle]
+    normal, edge_length = edge_normal(mesh, points, local_edge)
+    coords = triangle_coordinates(mesh, points)
 
     for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point(mesh, triangle, local_edge, s)
+        x, y = edge_point(mesh, points, local_edge, s)
         phi = basis_values_at_point(coords, x, y)
         interior_state = state_at_point(state, triangle, phi, triangle_total)
         ghost_state = boundary_state(interior_state, normal, boundary)
@@ -303,10 +327,20 @@ function add_elastic_boundary_face!(
 end
 
 function apply_elastic_mass_inverse(residual::AbstractVector{<:Real}, mesh, triangle_total::Integer)
+    triangles = oriented_triangle_connectivities(mesh)
+    return apply_elastic_mass_inverse(residual, mesh, triangles, triangle_total)
+end
+
+function apply_elastic_mass_inverse(
+    residual::AbstractVector{<:Real},
+    mesh,
+    triangles,
+    triangle_total::Integer,
+)
     rhs = similar(Vector{Float64}(residual))
 
-    for triangle in 1:triangle_total
-        area, _ = triangle_geometry(mesh, triangle)
+    for (triangle, points) in pairs(triangles)
+        area, _ = triangle_geometry(triangle_coordinates(mesh, points))
         for field in 1:ELASTIC_FIELD_COUNT
             dof1 = elastic_dof(triangle, 1, field, triangle_total)
             dof2 = elastic_dof(triangle, 2, field, triangle_total)
@@ -335,10 +369,11 @@ function named_elastic_state(values)
 end
 
 function evaluate_elastic_state(result::ElasticResult, x::Real, y::Real)
-    triangle_total = triangle_count(result.mesh)
+    triangles = oriented_triangle_connectivities(result.mesh)
+    triangle_total = length(triangles)
 
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(result.mesh, triangle)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(result.mesh, points)
         lambdas = barycentric_coordinates(coords, x, y)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
@@ -354,14 +389,15 @@ function elastic_energy(result::ElasticResult)
 end
 
 function elastic_energy(mesh, state::AbstractVector{<:Real}, material::ElasticMaterial)
-    triangle_total = triangle_count(mesh)
+    triangles = oriented_triangle_connectivities(mesh)
+    triangle_total = length(triangles)
     expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_length ||
         throw(ArgumentError("elastic state length does not match mesh"))
 
     total = 0.0
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(mesh, triangle)
+    for (triangle, points) in pairs(triangles)
+        coords = triangle_coordinates(mesh, points)
         area, _ = triangle_geometry(coords)
 
         for (lambdas, weight) in TRIANGLE_QUADRATURE
@@ -389,11 +425,12 @@ end
 
 function minimum_edge_length(mesh)
     hmin = Inf
+    triangles = oriented_triangle_connectivities(mesh)
 
     for facet in facet_adjacencies(mesh)
         triangle = facet.triangles[1]
         local_edge = facet.local_edges[1]
-        _, edge_length = edge_normal(mesh, triangle, local_edge)
+        _, edge_length = edge_normal(mesh, triangles[triangle], local_edge)
         hmin = min(hmin, edge_length)
     end
 

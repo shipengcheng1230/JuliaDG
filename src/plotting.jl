@@ -1,5 +1,6 @@
 function dg_plot_data(result::DGResult)
-    triangle_total = triangle_count(result.mesh)
+    cell_points = oriented_triangle_connectivities(result.mesh)
+    triangle_total = length(cell_points)
     expected_coeffs = 3 * triangle_total
     length(result.coeffs) == expected_coeffs ||
         throw(ArgumentError("DGResult coefficient vector must contain three values per triangle"))
@@ -10,8 +11,8 @@ function dg_plot_data(result::DGResult)
     triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
 
     point_index = 1
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(result.mesh, triangle)
+    for (triangle, points) in pairs(cell_points)
+        coords = triangle_coordinates(result.mesh, points)
         first_point = point_index
 
         for local_index in 1:3
@@ -39,7 +40,8 @@ function elastic_plot_data(result::ElasticResult, frame::Integer; field::Symbol=
 end
 
 function elastic_plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_magnitude)
-    triangle_total = triangle_count(mesh)
+    cell_points = oriented_triangle_connectivities(mesh)
+    triangle_total = length(cell_points)
     expected_state = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_state ||
         throw(ArgumentError("elastic state length does not match mesh"))
@@ -52,8 +54,8 @@ function elastic_plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:v
     field_index = elastic_plot_field_index(field)
 
     point_index = 1
-    for triangle in 1:triangle_total
-        coords = triangle_coordinates(mesh, triangle)
+    for (triangle, points) in pairs(cell_points)
+        coords = triangle_coordinates(mesh, points)
         first_point = point_index
 
         for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
