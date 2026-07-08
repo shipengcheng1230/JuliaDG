@@ -1,5 +1,5 @@
 struct DGResult
-    mesh
+    mesh::Meshes.Mesh
     coeffs::Vector{Float64}
     A::SparseMatrixCSC{Float64,Int}
     b::Vector{Float64}
@@ -13,18 +13,15 @@ function solve_poisson(
     g=(x, y) -> 0.0,
     penalty::Real=20.0,
 )
-    dg_mesh = resolve_mesh(mesh, nx, ny)
-    poisson_mesh = mesh isa TriMesh ? mesh_backend(mesh) : (mesh === nothing ? mesh_backend(dg_mesh) : mesh)
+    poisson_mesh = resolve_mesh(mesh, nx, ny)
     A, b = assemble_poisson_sipg(poisson_mesh, f, g; penalty=penalty)
     coeffs = A \ b
     return DGResult(poisson_mesh, Vector{Float64}(coeffs), A, b)
 end
 
 function evaluate_solution(result::DGResult, x::Real, y::Real)
-    mesh = result.mesh isa TriMesh ? mesh_backend(result.mesh) : result.mesh
-
-    for triangle in 1:triangle_count(mesh)
-        coords = triangle_coordinates(mesh, triangle)
+    for triangle in 1:triangle_count(result.mesh)
+        coords = triangle_coordinates(result.mesh, triangle)
         lambdas = barycentric_coordinates(coords, x, y)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
@@ -41,10 +38,9 @@ end
 
 function l2_error(result::DGResult, exact)
     error_squared = 0.0
-    mesh = result.mesh isa TriMesh ? mesh_backend(result.mesh) : result.mesh
 
-    for triangle in 1:triangle_count(mesh)
-        coords = triangle_coordinates(mesh, triangle)
+    for triangle in 1:triangle_count(result.mesh)
+        coords = triangle_coordinates(result.mesh, triangle)
         area, _ = triangle_geometry(coords)
 
         for (lambdas, weight) in TRIANGLE_QUADRATURE

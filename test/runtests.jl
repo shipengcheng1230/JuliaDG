@@ -6,31 +6,25 @@ import Meshes
 
 @testset "mesh" begin
     mesh = unit_square_mesh(1, 1)
-    @test JuliaDG.mesh_backend(mesh) isa Meshes.Mesh
-    @test length(JuliaDG.mesh_backend(mesh)) == size(mesh.cells, 2)
-    @test getproperty(Meshes.topology(JuliaDG.mesh_backend(mesh)), :connec)[1].indices == (1, 2, 4)
-    @test size(mesh.vertices) == (2, 4)
-    @test size(mesh.cells) == (3, 2)
-    @test length(mesh.faces) == 5
-    @test count(face -> face.cells[2] == 0, mesh.faces) == 4
-    @test count(face -> face.cells[2] != 0, mesh.faces) == 1
-    @test map(face -> (face.vertices, face.cells, face.local_edges), mesh.faces) == [
+    @test mesh isa Meshes.Mesh
+    @test length(mesh) == JuliaDG.triangle_count(mesh)
+    @test getproperty(Meshes.topology(mesh), :connec)[1].indices == (1, 2, 4)
+    @test JuliaDG.triangle_connectivities(mesh) == [(1, 2, 4), (1, 4, 3)]
+    @test JuliaDG.triangle_count(mesh) == 2
+    @test length(JuliaDG.facet_adjacencies(mesh)) == 5
+    @test count(facet -> facet.triangles[2] == 0, JuliaDG.facet_adjacencies(mesh)) == 4
+    @test count(facet -> facet.triangles[2] != 0, JuliaDG.facet_adjacencies(mesh)) == 1
+    @test map(facet -> (facet.point_ids, facet.triangles, facet.local_edges), JuliaDG.facet_adjacencies(mesh)) == [
         ((1, 2), (1, 0), (1, 0)),
         ((2, 4), (1, 0), (2, 0)),
         ((1, 4), (1, 2), (3, 1)),
         ((3, 4), (2, 0), (2, 0)),
         ((1, 3), (2, 0), (3, 0)),
     ]
-
-    @test mesh.vertices == [0.0 1.0 0.0 1.0; 0.0 0.0 1.0 1.0]
-    @test mesh.cells == [1 1; 2 4; 4 3]
     @test resolve_mesh(mesh, 9, 9) === mesh
-
-    meshes_grid = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
-    converted = TriMesh(meshes_grid)
-    @test converted.vertices == mesh.vertices
-    @test converted.cells == mesh.cells
-    @test JuliaDG.mesh_backend(converted) === meshes_grid
+    @test !isdefined(JuliaDG, Symbol("Tri", "Mesh"))
+    @test !isdefined(JuliaDG, Symbol("Tri", "Face"))
+    @test !isdefined(JuliaDG, Symbol("mesh", "_backend"))
 
     clockwise_points = [
         Meshes.Point(0.0, 0.0),
@@ -38,18 +32,24 @@ import Meshes
         Meshes.Point(0.0, 1.0),
     ]
     clockwise_connectivities = [Meshes.connect((1, 3, 2), Meshes.Triangle)]
-    clockwise_mesh = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
-    clockwise_converted = TriMesh(clockwise_mesh)
+    clockwise = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
 
-    @test clockwise_converted.cells[:, 1] == [1, 2, 3]
-    @test JuliaDG.triangle_geometry(clockwise_converted, 1)[1] ≈ 0.5
+    @test JuliaDG.triangle_geometry(clockwise, 1)[1] ≈ 0.5
 
     mesh2 = unit_square_mesh(2, 1)
-    @test size(mesh2.vertices) == (2, 6)
-    @test size(mesh2.cells) == (3, 4)
-    @test length(mesh2.faces) == 9
-    @test count(face -> face.cells[2] == 0, mesh2.faces) == 6
-    @test count(face -> face.cells[2] != 0, mesh2.faces) == 3
+    @test length(Meshes.vertices(mesh2)) == 6
+    @test JuliaDG.triangle_count(mesh2) == 4
+    @test length(JuliaDG.facet_adjacencies(mesh2)) == 9
+    @test count(facet -> facet.triangles[2] == 0, JuliaDG.facet_adjacencies(mesh2)) == 6
+    @test count(facet -> facet.triangles[2] != 0, JuliaDG.facet_adjacencies(mesh2)) == 3
+
+    try
+        resolve_mesh("not a mesh", 1, 1)
+        @test false
+    catch err
+        @test err isa ArgumentError
+        @test err.msg == "mesh must be nothing or Meshes.Mesh"
+    end
 
     @test_throws ArgumentError unit_square_mesh(0, 1)
     @test_throws ArgumentError unit_square_mesh(1, 0)
@@ -66,17 +66,6 @@ end
     @test JuliaDG.triangle_count(raw) == 2
     @test JuliaDG.triangle_points(raw, 1) == (1, 2, 4)
     @test JuliaDG.triangle_points(raw, 2) == (1, 4, 3)
-
-    legacy = unit_square_mesh(1, 1)
-    @test !applicable(JuliaDG.point_xy, legacy, 1)
-    @test !applicable(JuliaDG.triangle_connectivities, legacy)
-    @test !applicable(JuliaDG.oriented_triangle_connectivities, legacy)
-    @test !applicable(JuliaDG.triangle_count, legacy)
-    @test !applicable(JuliaDG.triangle_points, legacy, 1)
-    @test !isdefined(JuliaDG, :orient_triangle_points)
-    @test !isdefined(JuliaDG, :local_edge_for_points)
-    @test !isdefined(JuliaDG, :_facet_adjacencies_from_connectivities)
-    @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
 
     facets = JuliaDG.facet_adjacencies(raw)
     @test length(facets) == 5
@@ -124,19 +113,19 @@ end
     end
 
     mesh = unit_square_mesh(1, 1)
-    ncells = size(mesh.cells, 2)
-    @test JuliaDG.elastic_dof(1, 1, 1, ncells) == 1
-    @test JuliaDG.elastic_dof(1, 3, 1, ncells) == 3
-    @test JuliaDG.elastic_dof(2, 1, 1, ncells) == 4
-    @test JuliaDG.elastic_dof(1, 1, 2, ncells) == 7
-    @test JuliaDG.elastic_dof(2, 3, 5, ncells) == 30
+    triangle_total = JuliaDG.triangle_count(mesh)
+    @test JuliaDG.elastic_dof(1, 1, 1, triangle_total) == 1
+    @test JuliaDG.elastic_dof(1, 3, 1, triangle_total) == 3
+    @test JuliaDG.elastic_dof(2, 1, 1, triangle_total) == 4
+    @test JuliaDG.elastic_dof(1, 1, 2, triangle_total) == 7
+    @test JuliaDG.elastic_dof(2, 3, 5, triangle_total) == 30
 
     named_initial = (x, y) -> (vx=x, vy=y, sxx=x + y, syy=x - y, sxy=2 * x - y)
     tuple_initial = (x, y) -> (x, y, x + y, x - y, 2 * x - y)
     named_state = JuliaDG.interpolate_elastic_state(named_initial, mesh)
     tuple_state = JuliaDG.interpolate_elastic_state(tuple_initial, mesh)
 
-    @test length(named_state) == 5 * 3 * ncells
+    @test length(named_state) == 5 * 3 * triangle_total
     @test tuple_state == named_state
     @test JuliaDG.validate_elastic_boundary(:reflecting) == :reflecting
     @test JuliaDG.validate_elastic_boundary(:traction_free) == :traction_free
@@ -153,7 +142,7 @@ end
 @testset "elastic residual" begin
     mesh = unit_square_mesh(2, 2)
     material = ElasticMaterial(1.0, 1.0, 0.5)
-    ndofs = 5 * 3 * size(mesh.cells, 2)
+    ndofs = 5 * 3 * JuliaDG.triangle_count(mesh)
     state = zeros(ndofs)
     normal = (1.0, 0.0)
     interior = (1.0, 2.0, 3.0, 4.0, 5.0)
@@ -169,16 +158,16 @@ end
           [3 - sqrt(2.0), 0.0, 0.0, 0.0, 1 - 5 * sqrt(2.0)]
 
     mass_mesh = unit_square_mesh(1, 1)
-    mass_ncells = size(mass_mesh.cells, 2)
-    residual = zeros(5 * 3 * mass_ncells)
-    residual[JuliaDG.elastic_dof(1, 1, 1, mass_ncells)] = 1.0
-    residual[JuliaDG.elastic_dof(1, 2, 1, mass_ncells)] = 2.0
-    residual[JuliaDG.elastic_dof(1, 3, 1, mass_ncells)] = 3.0
-    mass_rhs = JuliaDG.apply_elastic_mass_inverse(residual, mass_mesh, mass_ncells)
-    @test mass_rhs[JuliaDG.elastic_dof(1, 1, 1, mass_ncells)] ≈ -12.0
-    @test mass_rhs[JuliaDG.elastic_dof(1, 2, 1, mass_ncells)] ≈ 12.0
-    @test mass_rhs[JuliaDG.elastic_dof(1, 3, 1, mass_ncells)] ≈ 36.0
-    @test all(iszero, mass_rhs[(JuliaDG.elastic_dof(1, 3, 1, mass_ncells) + 1):end])
+    mass_triangle_total = JuliaDG.triangle_count(mass_mesh)
+    residual = zeros(5 * 3 * mass_triangle_total)
+    residual[JuliaDG.elastic_dof(1, 1, 1, mass_triangle_total)] = 1.0
+    residual[JuliaDG.elastic_dof(1, 2, 1, mass_triangle_total)] = 2.0
+    residual[JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total)] = 3.0
+    mass_rhs = JuliaDG.apply_elastic_mass_inverse(residual, mass_mesh, mass_triangle_total)
+    @test mass_rhs[JuliaDG.elastic_dof(1, 1, 1, mass_triangle_total)] ≈ -12.0
+    @test mass_rhs[JuliaDG.elastic_dof(1, 2, 1, mass_triangle_total)] ≈ 12.0
+    @test mass_rhs[JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total)] ≈ 36.0
+    @test all(iszero, mass_rhs[(JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total) + 1):end])
 
     try
         JuliaDG.elastic_rhs(state[1:(end - 1)], mesh, material, :reflecting)
@@ -308,7 +297,7 @@ end
         Meshes.Point(0.0, 1.0),
     ]
     elastic_custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
-    elastic_custom_mesh = TriMesh(Meshes.SimpleMesh(elastic_custom_points, elastic_custom_connectivities))
+    elastic_custom_mesh = Meshes.SimpleMesh(elastic_custom_points, elastic_custom_connectivities)
     elastic_custom_result = solve_elastodynamics(
         tuple_zero_initial;
         mesh=elastic_custom_mesh,
@@ -336,7 +325,7 @@ end
     g = (x, y) -> 0.0
 
     A, b = assemble_poisson_sipg(mesh, f, g; penalty=20.0)
-    ndofs = 3 * size(mesh.cells, 2)
+    ndofs = 3 * JuliaDG.triangle_count(mesh)
 
     @test size(A) == (ndofs, ndofs)
     @test A isa SparseMatrixCSC{Float64,Int}
@@ -428,7 +417,7 @@ end
 
 @testset "plot data" begin
     mesh = unit_square_mesh(1, 1)
-    ndofs = 3 * size(mesh.cells, 2)
+    ndofs = 3 * JuliaDG.triangle_count(mesh)
     coeffs = Float64.(1:ndofs)
     result = DGResult(mesh, coeffs, spzeros(ndofs, ndofs), zeros(ndofs))
 
@@ -437,7 +426,7 @@ end
     @test length(data.xs) == ndofs
     @test length(data.ys) == ndofs
     @test length(data.values) == ndofs
-    @test length(data.triangles) == size(mesh.cells, 2)
+    @test length(data.triangles) == JuliaDG.triangle_count(mesh)
     @test data.triangles == [(1, 2, 3), (4, 5, 6)]
     @test isempty(intersect(collect(data.triangles[1]), collect(data.triangles[2])))
     @test data.values == coeffs
@@ -491,11 +480,11 @@ end
     @test_throws ArgumentError elastic_plot_data(result; field=:pressure)
 
     state2 = copy(state)
-    ncells = size(mesh.cells, 2)
-    for cell in 1:ncells
+    triangle_total = JuliaDG.triangle_count(mesh)
+    for triangle in 1:triangle_total
         for local_index in 1:JuliaDG.ELASTIC_LOCAL_DOF_COUNT
-            state2[JuliaDG.elastic_dof(cell, local_index, 1, ncells)] = 3.0
-            state2[JuliaDG.elastic_dof(cell, local_index, 2, ncells)] = 4.0
+            state2[JuliaDG.elastic_dof(triangle, local_index, 1, triangle_total)] = 3.0
+            state2[JuliaDG.elastic_dof(triangle, local_index, 2, triangle_total)] = 4.0
         end
     end
     history_result = ElasticResult(mesh, state2, material, [0.0, 0.1], [energy, energy], :reflecting, [state, state2])

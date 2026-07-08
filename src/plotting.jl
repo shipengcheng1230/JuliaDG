@@ -1,9 +1,8 @@
 function dg_plot_data(result::DGResult)
-    mesh = result.mesh isa TriMesh ? mesh_backend(result.mesh) : result.mesh
-    triangle_total = triangle_count(mesh)
+    triangle_total = triangle_count(result.mesh)
     expected_coeffs = 3 * triangle_total
     length(result.coeffs) == expected_coeffs ||
-        throw(ArgumentError("DGResult coefficient vector must contain three values per cell"))
+        throw(ArgumentError("DGResult coefficient vector must contain three values per triangle"))
 
     xs = Vector{Float64}(undef, expected_coeffs)
     ys = Vector{Float64}(undef, expected_coeffs)
@@ -12,7 +11,7 @@ function dg_plot_data(result::DGResult)
 
     point_index = 1
     for triangle in 1:triangle_total
-        coords = triangle_coordinates(mesh, triangle)
+        coords = triangle_coordinates(result.mesh, triangle)
         first_point = point_index
 
         for local_index in 1:3
@@ -39,32 +38,32 @@ function elastic_plot_data(result::ElasticResult, frame::Integer; field::Symbol=
     return elastic_plot_data(result.mesh, result.state_history[frame]; field=field)
 end
 
-function elastic_plot_data(mesh::TriMesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_magnitude)
-    ncells = size(mesh.cells, 2)
-    expected_state = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * ncells
+function elastic_plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_magnitude)
+    triangle_total = triangle_count(mesh)
+    expected_state = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_state ||
         throw(ArgumentError("elastic state length does not match mesh"))
 
-    npoints = ELASTIC_LOCAL_DOF_COUNT * ncells
+    npoints = ELASTIC_LOCAL_DOF_COUNT * triangle_total
     xs = Vector{Float64}(undef, npoints)
     ys = Vector{Float64}(undef, npoints)
     values = Vector{Float64}(undef, npoints)
-    triangles = Vector{NTuple{3,Int}}(undef, ncells)
+    triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
     field_index = elastic_plot_field_index(field)
 
     point_index = 1
-    for cell in 1:ncells
-        coords = cell_coordinates(mesh, cell)
+    for triangle in 1:triangle_total
+        coords = triangle_coordinates(mesh, triangle)
         first_point = point_index
 
         for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
             xs[point_index] = coords[1, local_index]
             ys[point_index] = coords[2, local_index]
-            values[point_index] = elastic_plot_value(state, cell, local_index, field_index, ncells)
+            values[point_index] = elastic_plot_value(state, triangle, local_index, field_index, triangle_total)
             point_index += 1
         end
 
-        triangles[cell] = (first_point, first_point + 1, first_point + 2)
+        triangles[triangle] = (first_point, first_point + 1, first_point + 2)
     end
 
     return (xs=xs, ys=ys, values=values, triangles=triangles)

@@ -4,12 +4,10 @@ using LinearAlgebra
 using SparseArrays
 import Meshes
 
-export TriMesh,
-    DGResult,
+export DGResult,
     ElasticMaterial,
     ElasticResult,
     unit_square_mesh,
-    mesh_backend,
     resolve_mesh,
     assemble_poisson_sipg,
     solve_poisson,
@@ -23,7 +21,7 @@ export TriMesh,
     plot_solution,
     record_solution
 
-include("mesh.jl")
+include("triangulation.jl")
 include("basis.jl")
 include("assembly.jl")
 include("solve.jl")

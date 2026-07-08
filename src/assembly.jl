@@ -1,13 +1,12 @@
 function assemble_poisson_sipg(mesh, f, g; penalty::Real=20.0)
-    mesh_backend_value = mesh isa TriMesh ? mesh_backend(mesh) : mesh
-    ndofs = 3 * triangle_count(mesh_backend_value)
+    ndofs = 3 * triangle_count(mesh)
     rows = Int[]
     cols = Int[]
     values = Float64[]
     b = zeros(Float64, ndofs)
 
-    assemble_triangle_terms!(rows, cols, values, b, mesh_backend_value, f)
-    assemble_face_terms!(rows, cols, values, b, mesh_backend_value, g, Float64(penalty))
+    assemble_triangle_terms!(rows, cols, values, b, mesh, f)
+    assemble_face_terms!(rows, cols, values, b, mesh, g, Float64(penalty))
 
     return sparse(rows, cols, values, ndofs, ndofs), b
 end

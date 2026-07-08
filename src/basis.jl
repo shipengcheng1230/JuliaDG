@@ -9,16 +9,6 @@ const EDGE_QUADRATURE = (
     (0.5 + 0.5 / sqrt(3.0), 0.5),
 )
 
-function cell_coordinates(mesh::TriMesh, cell::Integer)
-    coords = Matrix{Float64}(undef, 2, 3)
-    for local_index in 1:3
-        vertex = mesh.cells[local_index, cell]
-        coords[1, local_index] = mesh.vertices[1, vertex]
-        coords[2, local_index] = mesh.vertices[2, vertex]
-    end
-    return coords
-end
-
 function triangle_geometry(coords::AbstractMatrix{<:Real})
     x1, y1 = coords[1, 1], coords[2, 1]
     x2, y2 = coords[1, 2], coords[2, 2]
@@ -36,12 +26,11 @@ function triangle_geometry(coords::AbstractMatrix{<:Real})
 end
 
 function triangle_coordinates(mesh, triangle::Integer)
-    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
     coords = Matrix{Float64}(undef, 2, 3)
-    points = triangle_points(backend, triangle)
+    points = triangle_points(mesh, triangle)
 
     for local_index in 1:3
-        x, y = point_xy(backend, points[local_index])
+        x, y = point_xy(mesh, points[local_index])
         coords[1, local_index] = x
         coords[2, local_index] = y
     end
@@ -79,11 +68,10 @@ function point_in_triangle(coords::AbstractMatrix{<:Real}, x::Real, y::Real; tol
 end
 
 function edge_normal(mesh, triangle::Integer, local_edge::Integer)
-    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
     a, b = LOCAL_EDGES[local_edge]
-    points = triangle_points(backend, triangle)
-    x1, y1 = point_xy(backend, points[a])
-    x2, y2 = point_xy(backend, points[b])
+    points = triangle_points(mesh, triangle)
+    x1, y1 = point_xy(mesh, points[a])
+    x2, y2 = point_xy(mesh, points[b])
 
     dx = x2 - x1
     dy = y2 - y1
@@ -93,11 +81,10 @@ function edge_normal(mesh, triangle::Integer, local_edge::Integer)
 end
 
 function edge_point(mesh, triangle::Integer, local_edge::Integer, s::Real)
-    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
     a, b = LOCAL_EDGES[local_edge]
-    points = triangle_points(backend, triangle)
-    x1, y1 = point_xy(backend, points[a])
-    x2, y2 = point_xy(backend, points[b])
+    points = triangle_points(mesh, triangle)
+    x1, y1 = point_xy(mesh, points[a])
+    x2, y2 = point_xy(mesh, points[b])
 
     return ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
 end

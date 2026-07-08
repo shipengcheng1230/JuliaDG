@@ -35,13 +35,11 @@ err = l2_error(result, exact)
 Main containers:
 
 ```julia
-TriMesh(vertices, cells, faces)
 DGResult(mesh, coeffs, A, b)
+ElasticResult(mesh, state, material, times, energy_history, boundary, state_history)
 ```
 
-`TriMesh.vertices` is a `2 x nvertices` coordinate matrix. `TriMesh.cells` is a `3 x ncells` matrix of vertex indices. Each triangle owns three DG degrees of freedom.
-
-`TriMesh` stores a Meshes.jl backend internally. Access it with `mesh_backend(mesh)` when you need Meshes.jl algorithms, or construct a JuliaDG mesh from a triangular Meshes.jl mesh with `TriMesh(meshes_mesh)`.
+`mesh` is a triangular `Meshes.Mesh`. `unit_square_mesh(nx, ny)` returns a Meshes.jl simplex mesh, and `solve_poisson` / `solve_elastodynamics` accept custom triangular Meshes.jl meshes through the `mesh=` keyword. Each triangle owns three DG degrees of freedom.
 
 ## SIPG Form
 
