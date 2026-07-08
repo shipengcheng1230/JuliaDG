@@ -43,7 +43,7 @@ ElasticResult(mesh, state, material, times, energy_history, boundary, state_hist
 
 ## SIPG Form
 
-For interior faces, with normal `n` oriented from the left cell to the right cell:
+For interior facets, with normal `n` oriented from the left triangle to the right triangle:
 
 ```text
 [u] = u_left - u_right
@@ -60,7 +60,7 @@ a(u, v) =
   + sum_F int_F (penalty / h_F) [u] [v]
 ```
 
-On boundary faces, the same structure is used with `u_right = g` and `v_right = 0`, giving the Dirichlet contribution:
+On boundary facets, the same structure is used with `u_right = g` and `v_right = 0`, giving the Dirichlet contribution:
 
 ```text
 int_boundary (-grad u . n v - grad v . n u + penalty / h_F u v)

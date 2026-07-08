@@ -192,6 +192,11 @@ end
     @test JuliaDG.pressure_wave_speed(material) ≈ sqrt(2.0)
     @test JuliaDG.elastic_rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
     @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
+    triangles = JuliaDG.oriented_triangle_connectivities(mesh)
+    facets = JuliaDG.facet_adjacencies(mesh)
+    @test JuliaDG.elastic_rhs(state, mesh, triangles, facets, material, :reflecting) ≈ zeros(ndofs)
+    @test JuliaDG.elastic_rhs(state, mesh, triangles, facets, material, :reflecting) ≈
+          JuliaDG.elastic_rhs(state, mesh, material, :reflecting)
     @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
     @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
     reflected = JuliaDG.boundary_state(interior, normal, :reflecting)

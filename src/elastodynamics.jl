@@ -60,6 +60,10 @@ end
 
 function interpolate_elastic_state(initial, mesh)
     triangles = oriented_triangle_connectivities(mesh)
+    return interpolate_elastic_state(initial, mesh, triangles)
+end
+
+function interpolate_elastic_state(initial, mesh, triangles)
     triangle_total = length(triangles)
     state = zeros(Float64, ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total)
 
@@ -185,9 +189,21 @@ function traction_free_stress(sxx::Real, syy::Real, sxy::Real, normal)
 end
 
 function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMaterial, boundary::Symbol)
+    triangles = oriented_triangle_connectivities(mesh)
+    facets = facet_adjacencies(mesh)
+    return elastic_rhs(state, mesh, triangles, facets, material, boundary)
+end
+
+function elastic_rhs(
+    state::AbstractVector{<:Real},
+    mesh,
+    triangles,
+    facets,
+    material::ElasticMaterial,
+    boundary::Symbol,
+)
     validate_elastic_boundary(boundary)
 
-    triangles = oriented_triangle_connectivities(mesh)
     triangle_total = length(triangles)
     expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_length ||
@@ -195,7 +211,7 @@ function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMater
 
     residual = zeros(Float64, expected_length)
     add_elastic_volume_terms!(residual, state, mesh, triangles, material, triangle_total)
-    add_elastic_face_terms!(residual, state, mesh, triangles, material, boundary, triangle_total)
+    add_elastic_face_terms!(residual, state, mesh, triangles, facets, material, boundary, triangle_total)
     return apply_elastic_mass_inverse(residual, mesh, triangles, triangle_total)
 end
 
@@ -228,11 +244,12 @@ function add_elastic_face_terms!(
     state,
     mesh,
     triangles,
+    facets,
     material::ElasticMaterial,
     boundary::Symbol,
     triangle_total::Integer,
 )
-    for facet in facet_adjacencies(mesh)
+    for facet in facets
         if facet.triangles[2] == 0
             add_elastic_boundary_face!(
                 residual,
@@ -390,6 +407,15 @@ end
 
 function elastic_energy(mesh, state::AbstractVector{<:Real}, material::ElasticMaterial)
     triangles = oriented_triangle_connectivities(mesh)
+    return elastic_energy(mesh, state, material, triangles)
+end
+
+function elastic_energy(
+    mesh,
+    state::AbstractVector{<:Real},
+    material::ElasticMaterial,
+    triangles,
+)
     triangle_total = length(triangles)
     expected_length = ELASTIC_FIELD_COUNT * ELASTIC_LOCAL_DOF_COUNT * triangle_total
     length(state) == expected_length ||
@@ -424,10 +450,15 @@ function elastic_energy_density(q, material::ElasticMaterial)
 end
 
 function minimum_edge_length(mesh)
-    hmin = Inf
     triangles = oriented_triangle_connectivities(mesh)
+    facets = facet_adjacencies(mesh)
+    return minimum_edge_length(mesh, triangles, facets)
+end
 
-    for facet in facet_adjacencies(mesh)
+function minimum_edge_length(mesh, triangles, facets)
+    hmin = Inf
+
+    for facet in facets
         triangle = facet.triangles[1]
         local_edge = facet.local_edges[1]
         _, edge_length = edge_normal(mesh, triangles[triangle], local_edge)
@@ -439,7 +470,14 @@ end
 
 function default_elastic_dt(mesh, material::ElasticMaterial, cfl::Real)
     cfl > 0 || throw(ArgumentError("cfl must be positive"))
-    return Float64(cfl) * minimum_edge_length(mesh) / pressure_wave_speed(material)
+    triangles = oriented_triangle_connectivities(mesh)
+    facets = facet_adjacencies(mesh)
+    return default_elastic_dt(mesh, material, cfl, triangles, facets)
+end
+
+function default_elastic_dt(mesh, material::ElasticMaterial, cfl::Real, triangles, facets)
+    cfl > 0 || throw(ArgumentError("cfl must be positive"))
+    return Float64(cfl) * minimum_edge_length(mesh, triangles, facets) / pressure_wave_speed(material)
 end
 
 function ssprk3_step(
@@ -449,13 +487,27 @@ function ssprk3_step(
     material::ElasticMaterial,
     boundary::Symbol,
 )
-    rhs0 = elastic_rhs(state, mesh, material, boundary)
+    triangles = oriented_triangle_connectivities(mesh)
+    facets = facet_adjacencies(mesh)
+    return ssprk3_step(state, dt, mesh, triangles, facets, material, boundary)
+end
+
+function ssprk3_step(
+    state::Vector{Float64},
+    dt::Float64,
+    mesh,
+    triangles,
+    facets,
+    material::ElasticMaterial,
+    boundary::Symbol,
+)
+    rhs0 = elastic_rhs(state, mesh, triangles, facets, material, boundary)
     u1 = state .+ dt .* rhs0
 
-    rhs1 = elastic_rhs(u1, mesh, material, boundary)
+    rhs1 = elastic_rhs(u1, mesh, triangles, facets, material, boundary)
     u2 = 0.75 .* state .+ 0.25 .* (u1 .+ dt .* rhs1)
 
-    rhs2 = elastic_rhs(u2, mesh, material, boundary)
+    rhs2 = elastic_rhs(u2, mesh, triangles, facets, material, boundary)
     return (1 / 3) .* state .+ (2 / 3) .* (u2 .+ dt .* rhs2)
 end
 
@@ -477,18 +529,20 @@ function solve_elastodynamics(
     tend >= t0 || throw(ArgumentError("tspan end must be greater than or equal to start"))
 
     dg_mesh = resolve_mesh(mesh, nx, ny)
-    state = interpolate_elastic_state(initial, dg_mesh)
-    step_dt = dt === nothing ? default_elastic_dt(dg_mesh, material, cfl) : Float64(dt)
+    triangles = oriented_triangle_connectivities(dg_mesh)
+    facets = facet_adjacencies(dg_mesh)
+    state = interpolate_elastic_state(initial, dg_mesh, triangles)
+    step_dt = dt === nothing ? default_elastic_dt(dg_mesh, material, cfl, triangles, facets) : Float64(dt)
     step_dt > 0 || throw(ArgumentError("dt must be positive"))
 
     times = [t0]
-    energy_history = [elastic_energy(dg_mesh, state, material)]
+    energy_history = [elastic_energy(dg_mesh, state, material, triangles)]
     state_history = save_history ? [copy(state)] : nothing
     time = t0
 
     while time < tend
         step = min(step_dt, tend - time)
-        state = ssprk3_step(state, Float64(step), dg_mesh, material, boundary)
+        state = ssprk3_step(state, Float64(step), dg_mesh, triangles, facets, material, boundary)
         time += step
 
         if tend - time <= 10 * eps(max(abs(tend), 1.0))
@@ -496,7 +550,7 @@ function solve_elastodynamics(
         end
 
         push!(times, time)
-        push!(energy_history, elastic_energy(dg_mesh, state, material))
+        push!(energy_history, elastic_energy(dg_mesh, state, material, triangles))
         if save_history
             push!(state_history, copy(state))
         end
