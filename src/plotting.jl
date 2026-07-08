@@ -1,30 +1,31 @@
 function dg_plot_data(result::DGResult)
-    ncells = size(result.mesh.cells, 2)
-    expected_coeffs = 3 * ncells
+    mesh = result.mesh isa TriMesh ? mesh_backend(result.mesh) : result.mesh
+    triangle_total = triangle_count(mesh)
+    expected_coeffs = 3 * triangle_total
     length(result.coeffs) == expected_coeffs ||
         throw(ArgumentError("DGResult coefficient vector must contain three values per cell"))
 
     xs = Vector{Float64}(undef, expected_coeffs)
     ys = Vector{Float64}(undef, expected_coeffs)
     values = Vector{Float64}(undef, expected_coeffs)
-    faces = Vector{NTuple{3,Int}}(undef, ncells)
+    triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
 
     point_index = 1
-    for cell in 1:ncells
-        coords = cell_coordinates(result.mesh, cell)
+    for triangle in 1:triangle_total
+        coords = triangle_coordinates(mesh, triangle)
         first_point = point_index
 
         for local_index in 1:3
             xs[point_index] = coords[1, local_index]
             ys[point_index] = coords[2, local_index]
-            values[point_index] = result.coeffs[global_dof(cell, local_index)]
+            values[point_index] = result.coeffs[global_dof(triangle, local_index)]
             point_index += 1
         end
 
-        faces[cell] = (first_point, first_point + 1, first_point + 2)
+        triangles[triangle] = (first_point, first_point + 1, first_point + 2)
     end
 
-    return (xs=xs, ys=ys, values=values, faces=faces)
+    return (xs=xs, ys=ys, values=values, triangles=triangles)
 end
 
 function elastic_plot_data(result::ElasticResult; field::Symbol=:velocity_magnitude)
@@ -48,7 +49,7 @@ function elastic_plot_data(mesh::TriMesh, state::AbstractVector{<:Real}; field::
     xs = Vector{Float64}(undef, npoints)
     ys = Vector{Float64}(undef, npoints)
     values = Vector{Float64}(undef, npoints)
-    faces = Vector{NTuple{3,Int}}(undef, ncells)
+    triangles = Vector{NTuple{3,Int}}(undef, ncells)
     field_index = elastic_plot_field_index(field)
 
     point_index = 1
@@ -63,10 +64,10 @@ function elastic_plot_data(mesh::TriMesh, state::AbstractVector{<:Real}; field::
             point_index += 1
         end
 
-        faces[cell] = (first_point, first_point + 1, first_point + 2)
+        triangles[cell] = (first_point, first_point + 1, first_point + 2)
     end
 
-    return (xs=xs, ys=ys, values=values, faces=faces)
+    return (xs=xs, ys=ys, values=values, triangles=triangles)
 end
 
 function elastic_plot_field_index(field::Symbol)

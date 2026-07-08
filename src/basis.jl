@@ -35,7 +35,21 @@ function triangle_geometry(coords::AbstractMatrix{<:Real})
     return 0.5 * det_j, grads
 end
 
-triangle_geometry(mesh::TriMesh, cell::Integer) = triangle_geometry(cell_coordinates(mesh, cell))
+function triangle_coordinates(mesh, triangle::Integer)
+    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
+    coords = Matrix{Float64}(undef, 2, 3)
+    points = triangle_points(backend, triangle)
+
+    for local_index in 1:3
+        x, y = point_xy(backend, points[local_index])
+        coords[1, local_index] = x
+        coords[2, local_index] = y
+    end
+
+    return coords
+end
+
+triangle_geometry(mesh, triangle::Integer) = triangle_geometry(triangle_coordinates(mesh, triangle))
 
 function barycentric_coordinates(coords::AbstractMatrix{<:Real}, x::Real, y::Real)
     x1, y1 = coords[1, 1], coords[2, 1]
@@ -64,13 +78,12 @@ function point_in_triangle(coords::AbstractMatrix{<:Real}, x::Real, y::Real; tol
     return all(lambda -> lambda >= -tol && lambda <= 1 + tol, lambdas)
 end
 
-function edge_normal(mesh::TriMesh, cell::Integer, local_edge::Integer)
+function edge_normal(mesh, triangle::Integer, local_edge::Integer)
+    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
     a, b = LOCAL_EDGES[local_edge]
-    va = mesh.cells[a, cell]
-    vb = mesh.cells[b, cell]
-
-    x1, y1 = mesh.vertices[1, va], mesh.vertices[2, va]
-    x2, y2 = mesh.vertices[1, vb], mesh.vertices[2, vb]
+    points = triangle_points(backend, triangle)
+    x1, y1 = point_xy(backend, points[a])
+    x2, y2 = point_xy(backend, points[b])
 
     dx = x2 - x1
     dy = y2 - y1
@@ -79,13 +92,12 @@ function edge_normal(mesh::TriMesh, cell::Integer, local_edge::Integer)
     return ((dy / edge_len, -dx / edge_len), edge_len)
 end
 
-function edge_point(mesh::TriMesh, cell::Integer, local_edge::Integer, s::Real)
+function edge_point(mesh, triangle::Integer, local_edge::Integer, s::Real)
+    backend = mesh isa TriMesh ? mesh_backend(mesh) : mesh
     a, b = LOCAL_EDGES[local_edge]
-    va = mesh.cells[a, cell]
-    vb = mesh.cells[b, cell]
-
-    x1, y1 = mesh.vertices[1, va], mesh.vertices[2, va]
-    x2, y2 = mesh.vertices[1, vb], mesh.vertices[2, vb]
+    points = triangle_points(backend, triangle)
+    x1, y1 = point_xy(backend, points[a])
+    x2, y2 = point_xy(backend, points[b])
 
     return ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
 end

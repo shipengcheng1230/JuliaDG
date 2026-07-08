@@ -350,11 +350,19 @@ end
     zero_g = (x, y) -> 0.0
     A0, b0 = assemble_poisson_sipg(mesh, zero_f, zero_g; penalty=20.0)
     @test isapprox(norm(A0 \ b0), 0.0; atol=1.0e-12)
+
+    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(2, 2)))
+    A_raw, b_raw = assemble_poisson_sipg(raw, f, g; penalty=20.0)
+    raw_ndofs = 3 * JuliaDG.triangle_count(raw)
+
+    @test size(A_raw) == (raw_ndofs, raw_ndofs)
+    @test length(b_raw) == raw_ndofs
+    @test isapprox(norm(Matrix(A_raw - transpose(A_raw))), 0.0; atol=1.0e-10)
 end
 
 @testset "basis geometry" begin
     mesh = unit_square_mesh(1, 1)
-    coords = JuliaDG.cell_coordinates(mesh, 1)
+    coords = JuliaDG.triangle_coordinates(mesh, 1)
     area, grads = JuliaDG.triangle_geometry(coords)
 
     @test area ≈ 0.5
@@ -405,7 +413,7 @@ end
         Meshes.Point(0.0, 1.0),
     ]
     custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
-    custom_mesh = TriMesh(Meshes.SimpleMesh(custom_points, custom_connectivities))
+    custom_mesh = Meshes.SimpleMesh(custom_points, custom_connectivities)
     custom_result = solve_poisson(
         zero_f;
         mesh=custom_mesh,
@@ -416,18 +424,6 @@ end
     @test custom_result.mesh === custom_mesh
     @test length(custom_result.coeffs) == 3
     @test l2_error(custom_result, affine) < 1.0e-8
-
-    raw_custom_mesh = Meshes.SimpleMesh(custom_points, custom_connectivities)
-    raw_custom_result = solve_poisson(
-        zero_f;
-        mesh=raw_custom_mesh,
-        g=affine,
-        penalty=30.0,
-    )
-
-    @test JuliaDG.mesh_backend(raw_custom_result.mesh) === raw_custom_mesh
-    @test length(raw_custom_result.coeffs) == 3
-    @test l2_error(raw_custom_result, affine) < 1.0e-8
 end
 
 @testset "plot data" begin
@@ -441,12 +437,21 @@ end
     @test length(data.xs) == ndofs
     @test length(data.ys) == ndofs
     @test length(data.values) == ndofs
-    @test length(data.faces) == size(mesh.cells, 2)
-    @test data.faces == [(1, 2, 3), (4, 5, 6)]
-    @test isempty(intersect(collect(data.faces[1]), collect(data.faces[2])))
+    @test length(data.triangles) == size(mesh.cells, 2)
+    @test data.triangles == [(1, 2, 3), (4, 5, 6)]
+    @test isempty(intersect(collect(data.triangles[1]), collect(data.triangles[2])))
     @test data.values == coeffs
     @test data.xs == [0.0, 1.0, 1.0, 0.0, 1.0, 0.0]
     @test data.ys == [0.0, 0.0, 1.0, 0.0, 1.0, 1.0]
+
+    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
+    raw_ndofs = 3 * JuliaDG.triangle_count(raw)
+    raw_coeffs = Float64.(1:raw_ndofs)
+    raw_result = DGResult(raw, raw_coeffs, spzeros(raw_ndofs, raw_ndofs), zeros(raw_ndofs))
+    raw_data = dg_plot_data(raw_result)
+
+    @test raw_data.triangles == [(1, 2, 3), (4, 5, 6)]
+    @test raw_data.values == raw_coeffs
 
     bad_result = DGResult(mesh, coeffs[1:(end - 1)], spzeros(ndofs - 1, ndofs - 1), zeros(ndofs - 1))
     @test_throws ArgumentError dg_plot_data(bad_result)
@@ -474,13 +479,13 @@ end
     @test length(data.xs) == length(state) ÷ 5
     @test length(data.ys) == length(state) ÷ 5
     @test length(data.values) == length(state) ÷ 5
-    @test data.faces == [(1, 2, 3), (4, 5, 6)]
+    @test data.triangles == [(1, 2, 3), (4, 5, 6)]
     @test data.values ≈ [sqrt(x^2 + (2 * y)^2) for (x, y) in zip(data.xs, data.ys)]
 
     sxy_data = elastic_plot_data(result; field=:sxy)
     @test sxy_data.xs == data.xs
     @test sxy_data.ys == data.ys
-    @test sxy_data.faces == data.faces
+    @test sxy_data.triangles == data.triangles
     @test sxy_data.values ≈ [10 + x - y for (x, y) in zip(data.xs, data.ys)]
 
     @test_throws ArgumentError elastic_plot_data(result; field=:pressure)

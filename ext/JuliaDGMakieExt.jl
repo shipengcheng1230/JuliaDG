@@ -47,12 +47,12 @@ end
 
 function triangulation(data)
     vertices = hcat(data.xs, data.ys)
-    faces = Matrix{Int}(undef, length(data.faces), 3)
+    faces = Matrix{Int}(undef, length(data.triangles), 3)
 
-    for (row, face) in enumerate(data.faces)
-        faces[row, 1] = face[1]
-        faces[row, 2] = face[2]
-        faces[row, 3] = face[3]
+    for (row, triangle) in enumerate(data.triangles)
+        faces[row, 1] = triangle[1]
+        faces[row, 2] = triangle[2]
+        faces[row, 3] = triangle[3]
     end
 
     return vertices, faces
@@ -63,7 +63,7 @@ elastic_colorbar_label(field::Symbol) = field === :velocity_magnitude ? "|v|" : 
 function edge_segments(data)
     points = Makie.Point2f[]
 
-    for (a, b, c) in data.faces
+    for (a, b, c) in data.triangles
         pa = Makie.Point2f(data.xs[a], data.ys[a])
         pb = Makie.Point2f(data.xs[b], data.ys[b])
         pc = Makie.Point2f(data.xs[c], data.ys[c])
