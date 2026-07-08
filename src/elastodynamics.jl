@@ -193,6 +193,11 @@ function traction_free_stress(sxx::Real, syy::Real, sxy::Real, normal)
     return (ghost_sxx, ghost_syy, ghost_sxy)
 end
 
+function add_elastic_volume_terms! end
+function add_elastic_interior_face! end
+function add_elastic_boundary_face! end
+function elastic_triangle_energy end
+
 function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMaterial, boundary::Symbol)
     validate_elastic_boundary(boundary)
     triangles = oriented_triangle_connectivities(mesh)
@@ -202,96 +207,6 @@ function elastic_rhs(state::AbstractVector{<:Real}, mesh, material::ElasticMater
     length(state) == expected_length ||
         throw(ArgumentError("elastic state length does not match mesh"))
 
-    residual = zeros(Float64, expected_length)
-    for (triangle, points) in pairs(triangles)
-        add_elastic_volume_terms!(residual, state, mesh, triangle, points, material, triangle_total)
-    end
-    for facet in facets
-        left_triangle = facet.triangles[1]
-        left_points = triangles[left_triangle]
-        if facet.triangles[2] == 0
-            add_elastic_boundary_face!(
-                residual,
-                state,
-                mesh,
-                left_triangle,
-                left_points,
-                facet.local_edges[1],
-                material,
-                boundary,
-                triangle_total,
-            )
-        else
-            right_triangle = facet.triangles[2]
-            right_points = triangles[right_triangle]
-            add_elastic_interior_face!(
-                residual,
-                state,
-                mesh,
-                left_triangle,
-                left_points,
-                right_triangle,
-                right_points,
-                facet.local_edges[1],
-                material,
-                triangle_total,
-            )
-        end
-    end
-    return apply_elastic_mass_inverse(residual, mesh, triangle_total)
-end
-
-function add_elastic_volume_terms!(
-    residual,
-    state,
-    mesh,
-    triangle::Integer,
-    points,
-    material::ElasticMaterial,
-    triangle_total::Integer,
-)
-    coordinates_for(points_tuple) = begin
-        coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
-            x, y = point_xy(mesh, points_tuple[local_index])
-            coords[1, local_index] = x
-            coords[2, local_index] = y
-        end
-        coords
-    end
-    coords = coordinates_for(points)
-    area, grads = triangle_geometry(coords)
-
-    for (lambdas, weight) in TRIANGLE_QUADRATURE
-        q = state_at_point(state, triangle, lambdas, triangle_total)
-        flux_x = elastic_flux_x(q, material)
-        flux_y = elastic_flux_y(q, material)
-
-        for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
-            scale_x = -area * weight * grads[1, local_index]
-            scale_y = -area * weight * grads[2, local_index]
-            for field in 1:ELASTIC_FIELD_COUNT
-                row = elastic_dof(triangle, local_index, field, triangle_total)
-                residual[row] += scale_x * flux_x[field] + scale_y * flux_y[field]
-            end
-        end
-    end
-
-    return nothing
-end
-
-function add_elastic_interior_face!(
-    residual,
-    state,
-    mesh,
-    left_triangle::Integer,
-    left_points,
-    right_triangle::Integer,
-    right_points,
-    left_edge::Integer,
-    material::ElasticMaterial,
-    triangle_total::Integer,
-)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
         for local_index in 1:3
@@ -317,88 +232,97 @@ function add_elastic_interior_face!(
         ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
     end
 
-    normal, edge_length = edge_normal_for(left_points, left_edge)
-    left_coords = coordinates_for(left_points)
-    right_coords = coordinates_for(right_points)
+    function add_volume_terms_local!(residual, triangle, points)
+        coords = coordinates_for(points)
+        area, grads = triangle_geometry(coords)
 
-    for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point_for(left_points, left_edge, s)
-        left_phi = basis_values_at_point(left_coords, x, y)
-        right_phi = basis_values_at_point(right_coords, x, y)
-        left_state = state_at_point(state, left_triangle, left_phi, triangle_total)
-        right_state = state_at_point(state, right_triangle, right_phi, triangle_total)
-        flux = normal_flux(left_state, right_state, normal, material)
-        weight = edge_length * weight_1d
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(state, triangle, lambdas, triangle_total)
+            flux_x = elastic_flux_x(q, material)
+            flux_y = elastic_flux_y(q, material)
 
-        for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
-            for field in 1:ELASTIC_FIELD_COUNT
-                residual[elastic_dof(left_triangle, local_index, field, triangle_total)] +=
-                    weight * left_phi[local_index] * flux[field]
-                residual[elastic_dof(right_triangle, local_index, field, triangle_total)] -=
-                    weight * right_phi[local_index] * flux[field]
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                scale_x = -area * weight * grads[1, local_index]
+                scale_y = -area * weight * grads[2, local_index]
+                for field in 1:ELASTIC_FIELD_COUNT
+                    row = elastic_dof(triangle, local_index, field, triangle_total)
+                    residual[row] += scale_x * flux_x[field] + scale_y * flux_y[field]
+                end
             end
         end
+
+        return nothing
     end
 
-    return nothing
-end
+    function add_interior_face_local!(residual, facet)
+        left_triangle, right_triangle = facet.triangles
+        left_points = triangles[left_triangle]
+        right_points = triangles[right_triangle]
+        left_edge = facet.local_edges[1]
+        normal, edge_length = edge_normal_for(left_points, left_edge)
+        left_coords = coordinates_for(left_points)
+        right_coords = coordinates_for(right_points)
 
-function add_elastic_boundary_face!(
-    residual,
-    state,
-    mesh,
-    triangle::Integer,
-    points,
-    local_edge::Integer,
-    material::ElasticMaterial,
-    boundary::Symbol,
-    triangle_total::Integer,
-)
-    coordinates_for(points_tuple) = begin
-        coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
-            x, y = point_xy(mesh, points_tuple[local_index])
-            coords[1, local_index] = x
-            coords[2, local_index] = y
-        end
-        coords
-    end
-    edge_normal_for(points_tuple, edge) = begin
-        a, b = LOCAL_EDGES[edge]
-        x1, y1 = point_xy(mesh, points_tuple[a])
-        x2, y2 = point_xy(mesh, points_tuple[b])
-        dx = x2 - x1
-        dy = y2 - y1
-        edge_len = hypot(dx, dy)
-        ((dy / edge_len, -dx / edge_len), edge_len)
-    end
-    edge_point_for(points_tuple, edge, s) = begin
-        a, b = LOCAL_EDGES[edge]
-        x1, y1 = point_xy(mesh, points_tuple[a])
-        x2, y2 = point_xy(mesh, points_tuple[b])
-        ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
-    end
+        for (s, weight_1d) in EDGE_QUADRATURE
+            x, y = edge_point_for(left_points, left_edge, s)
+            left_phi = basis_values_at_point(left_coords, x, y)
+            right_phi = basis_values_at_point(right_coords, x, y)
+            left_state = state_at_point(state, left_triangle, left_phi, triangle_total)
+            right_state = state_at_point(state, right_triangle, right_phi, triangle_total)
+            flux = normal_flux(left_state, right_state, normal, material)
+            weight = edge_length * weight_1d
 
-    normal, edge_length = edge_normal_for(points, local_edge)
-    coords = coordinates_for(points)
-
-    for (s, weight_1d) in EDGE_QUADRATURE
-        x, y = edge_point_for(points, local_edge, s)
-        phi = basis_values_at_point(coords, x, y)
-        interior_state = state_at_point(state, triangle, phi, triangle_total)
-        ghost_state = boundary_state(interior_state, normal, boundary)
-        flux = normal_flux(interior_state, ghost_state, normal, material)
-        weight = edge_length * weight_1d
-
-        for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
-            for field in 1:ELASTIC_FIELD_COUNT
-                residual[elastic_dof(triangle, local_index, field, triangle_total)] +=
-                    weight * phi[local_index] * flux[field]
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                for field in 1:ELASTIC_FIELD_COUNT
+                    residual[elastic_dof(left_triangle, local_index, field, triangle_total)] +=
+                        weight * left_phi[local_index] * flux[field]
+                    residual[elastic_dof(right_triangle, local_index, field, triangle_total)] -=
+                        weight * right_phi[local_index] * flux[field]
+                end
             end
         end
+
+        return nothing
     end
 
-    return nothing
+    function add_boundary_face_local!(residual, facet)
+        triangle = facet.triangles[1]
+        points = triangles[triangle]
+        local_edge = facet.local_edges[1]
+        normal, edge_length = edge_normal_for(points, local_edge)
+        coords = coordinates_for(points)
+
+        for (s, weight_1d) in EDGE_QUADRATURE
+            x, y = edge_point_for(points, local_edge, s)
+            phi = basis_values_at_point(coords, x, y)
+            interior_state = state_at_point(state, triangle, phi, triangle_total)
+            ghost_state = boundary_state(interior_state, normal, boundary)
+            flux = normal_flux(interior_state, ghost_state, normal, material)
+            weight = edge_length * weight_1d
+
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                for field in 1:ELASTIC_FIELD_COUNT
+                    residual[elastic_dof(triangle, local_index, field, triangle_total)] +=
+                        weight * phi[local_index] * flux[field]
+                end
+            end
+        end
+
+        return nothing
+    end
+
+    residual = zeros(Float64, expected_length)
+    for (triangle, points) in pairs(triangles)
+        add_volume_terms_local!(residual, triangle, points)
+    end
+    for facet in facets
+        if facet.triangles[2] == 0
+            add_boundary_face_local!(residual, facet)
+        else
+            add_interior_face_local!(residual, facet)
+        end
+    end
+    return apply_elastic_mass_inverse(residual, mesh, triangle_total)
 end
 
 function apply_elastic_mass_inverse(residual::AbstractVector{<:Real}, mesh, triangle_total::Integer)
@@ -491,38 +415,31 @@ function elastic_energy(mesh, state::AbstractVector{<:Real}, material::ElasticMa
     length(state) == expected_length ||
         throw(ArgumentError("elastic state length does not match mesh"))
 
-    total = 0.0
-    for (triangle, points) in pairs(triangles)
-        total += elastic_triangle_energy(state, mesh, triangle, points, material, triangle_total)
-    end
-
-    return total
-end
-
-function elastic_triangle_energy(
-    state::AbstractVector{<:Real},
-    mesh,
-    triangle::Integer,
-    points,
-    material::ElasticMaterial,
-    triangle_total::Integer,
-)
-    coordinates_for(points_tuple) = begin
+    coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
         for local_index in 1:3
-            x, y = point_xy(mesh, points_tuple[local_index])
+            x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
         end
         coords
     end
-    coords = coordinates_for(points)
-    area, _ = triangle_geometry(coords)
-    total = 0.0
+    triangle_energy_local(triangle, points) = begin
+        coords = coordinates_for(points)
+        area, _ = triangle_geometry(coords)
+        total = 0.0
 
-    for (lambdas, weight) in TRIANGLE_QUADRATURE
-        q = state_at_point(state, triangle, lambdas, triangle_total)
-        total += area * weight * elastic_energy_density(q, material)
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(state, triangle, lambdas, triangle_total)
+            total += area * weight * elastic_energy_density(q, material)
+        end
+
+        total
+    end
+
+    total = 0.0
+    for (triangle, points) in pairs(triangles)
+        total += triangle_energy_local(triangle, points)
     end
 
     return total
@@ -628,6 +545,104 @@ function solve_elastodynamics(
         edge_len = hypot(dx, dy)
         ((dy / edge_len, -dx / edge_len), edge_len)
     end
+    edge_point_for(points, local_edge, s) = begin
+        a, b = LOCAL_EDGES[local_edge]
+        x1, y1 = point_xy(dg_mesh, points[a])
+        x2, y2 = point_xy(dg_mesh, points[b])
+        ((1 - s) * x1 + s * x2, (1 - s) * y1 + s * y2)
+    end
+
+    function add_volume_terms_cached!(residual, current_state, triangle, points)
+        coords = coordinates_for(points)
+        area, grads = triangle_geometry(coords)
+
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(current_state, triangle, lambdas, triangle_total)
+            flux_x = elastic_flux_x(q, material)
+            flux_y = elastic_flux_y(q, material)
+
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                scale_x = -area * weight * grads[1, local_index]
+                scale_y = -area * weight * grads[2, local_index]
+                for field in 1:ELASTIC_FIELD_COUNT
+                    row = elastic_dof(triangle, local_index, field, triangle_total)
+                    residual[row] += scale_x * flux_x[field] + scale_y * flux_y[field]
+                end
+            end
+        end
+
+        return nothing
+    end
+
+    function add_interior_face_cached!(residual, current_state, facet)
+        left_triangle, right_triangle = facet.triangles
+        left_points = triangles[left_triangle]
+        right_points = triangles[right_triangle]
+        left_edge = facet.local_edges[1]
+        normal, edge_length = edge_normal_for(left_points, left_edge)
+        left_coords = coordinates_for(left_points)
+        right_coords = coordinates_for(right_points)
+
+        for (s, weight_1d) in EDGE_QUADRATURE
+            x, y = edge_point_for(left_points, left_edge, s)
+            left_phi = basis_values_at_point(left_coords, x, y)
+            right_phi = basis_values_at_point(right_coords, x, y)
+            left_state = state_at_point(current_state, left_triangle, left_phi, triangle_total)
+            right_state = state_at_point(current_state, right_triangle, right_phi, triangle_total)
+            flux = normal_flux(left_state, right_state, normal, material)
+            weight = edge_length * weight_1d
+
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                for field in 1:ELASTIC_FIELD_COUNT
+                    residual[elastic_dof(left_triangle, local_index, field, triangle_total)] +=
+                        weight * left_phi[local_index] * flux[field]
+                    residual[elastic_dof(right_triangle, local_index, field, triangle_total)] -=
+                        weight * right_phi[local_index] * flux[field]
+                end
+            end
+        end
+
+        return nothing
+    end
+
+    function add_boundary_face_cached!(residual, current_state, facet)
+        triangle = facet.triangles[1]
+        points = triangles[triangle]
+        local_edge = facet.local_edges[1]
+        normal, edge_length = edge_normal_for(points, local_edge)
+        coords = coordinates_for(points)
+
+        for (s, weight_1d) in EDGE_QUADRATURE
+            x, y = edge_point_for(points, local_edge, s)
+            phi = basis_values_at_point(coords, x, y)
+            interior_state = state_at_point(current_state, triangle, phi, triangle_total)
+            ghost_state = boundary_state(interior_state, normal, boundary)
+            flux = normal_flux(interior_state, ghost_state, normal, material)
+            weight = edge_length * weight_1d
+
+            for local_index in 1:ELASTIC_LOCAL_DOF_COUNT
+                for field in 1:ELASTIC_FIELD_COUNT
+                    residual[elastic_dof(triangle, local_index, field, triangle_total)] +=
+                        weight * phi[local_index] * flux[field]
+                end
+            end
+        end
+
+        return nothing
+    end
+
+    triangle_energy_cached(current_state, triangle, points) = begin
+        coords = coordinates_for(points)
+        area, _ = triangle_geometry(coords)
+        total = 0.0
+
+        for (lambdas, weight) in TRIANGLE_QUADRATURE
+            q = state_at_point(current_state, triangle, lambdas, triangle_total)
+            total += area * weight * elastic_energy_density(q, material)
+        end
+
+        total
+    end
 
     function interpolate_cached(initial_condition)
         state = zeros(Float64, expected_length)
@@ -658,7 +673,7 @@ function solve_elastodynamics(
 
         total = 0.0
         for (triangle, points) in pairs(triangles)
-            total += elastic_triangle_energy(current_state, dg_mesh, triangle, points, material, triangle_total)
+            total += triangle_energy_cached(current_state, triangle, points)
         end
         return total
     end
@@ -684,38 +699,13 @@ function solve_elastodynamics(
 
         residual = zeros(Float64, expected_length)
         for (triangle, points) in pairs(triangles)
-            add_elastic_volume_terms!(residual, current_state, dg_mesh, triangle, points, material, triangle_total)
+            add_volume_terms_cached!(residual, current_state, triangle, points)
         end
         for facet in facets
-            left_triangle = facet.triangles[1]
-            left_points = triangles[left_triangle]
             if facet.triangles[2] == 0
-                add_elastic_boundary_face!(
-                    residual,
-                    current_state,
-                    dg_mesh,
-                    left_triangle,
-                    left_points,
-                    facet.local_edges[1],
-                    material,
-                    boundary,
-                    triangle_total,
-                )
+                add_boundary_face_cached!(residual, current_state, facet)
             else
-                right_triangle = facet.triangles[2]
-                right_points = triangles[right_triangle]
-                add_elastic_interior_face!(
-                    residual,
-                    current_state,
-                    dg_mesh,
-                    left_triangle,
-                    left_points,
-                    right_triangle,
-                    right_points,
-                    facet.local_edges[1],
-                    material,
-                    triangle_total,
-                )
+                add_interior_face_cached!(residual, current_state, facet)
             end
         end
         return mass_inverse_cached(residual)
