@@ -91,11 +91,11 @@ end
     IteratorOnlyCRS = typeof(Meshes.coords(Meshes.Point(0.0, 0.0)))
 
     struct IteratorOnlyMesh <: Meshes.Mesh{Meshes.𝔼{2}, IteratorOnlyCRS, IteratorOnlyTopology}
-        vertices::Vector{IteratorOnlyPoint}
+        points::Vector{IteratorOnlyPoint}
         topology::IteratorOnlyTopology
     end
 
-    Meshes.vertices(mesh::IteratorOnlyMesh) = mesh.vertices
+    Meshes.vertices(mesh::IteratorOnlyMesh) = mesh.points
     Meshes.topology(mesh::IteratorOnlyMesh) = mesh.topology
 
     iterator_only = IteratorOnlyMesh(
