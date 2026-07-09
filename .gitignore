@@ -13,3 +13,7 @@ LocalPreferences.toml
 
 # AI
 .superpowers
+AGENTS.md
+
+# Julia
+Manifest.toml
