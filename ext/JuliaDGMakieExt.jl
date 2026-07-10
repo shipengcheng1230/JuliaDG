@@ -12,13 +12,13 @@ function JuliaDG.Poisson.plot(
     return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label="u")
 end
 
-function JuliaDG.plot_solution(
-    result::JuliaDG.ElasticResult;
+function JuliaDG.Elastodynamics.plot(
+    result::JuliaDG.Elastodynamics.Result;
     field::Symbol=:velocity_magnitude,
     colormap=:viridis,
     show_mesh::Bool=true,
 )
-    data = JuliaDG.elastic_plot_data(result; field=field)
+    data = JuliaDG.Elastodynamics.plot_data(result; field=field)
     return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label=elastic_colorbar_label(field))
 end
 
@@ -78,8 +78,8 @@ function edge_segments(data)
     return points
 end
 
-function JuliaDG.record_solution(
-    result::JuliaDG.ElasticResult,
+function JuliaDG.Elastodynamics.record(
+    result::JuliaDG.Elastodynamics.Result,
     path::AbstractString;
     field::Symbol=:velocity_magnitude,
     framerate::Real=20,
@@ -87,9 +87,9 @@ function JuliaDG.record_solution(
     show_mesh::Bool=true,
 )
     result.state_history === nothing &&
-        throw(ArgumentError("ElasticResult does not contain state history; solve with save_history=true"))
+        throw(ArgumentError("Elastodynamics.Result does not contain state history; solve with save_history=true"))
 
-    first_data = JuliaDG.elastic_plot_data(result, 1; field=field)
+    first_data = JuliaDG.Elastodynamics.plot_data(result, 1; field=field)
     vertices, faces = triangulation(first_data)
 
     color_values = Makie.Observable(first_data.values)
@@ -117,7 +117,7 @@ function JuliaDG.record_solution(
     Makie.autolimits!(ax)
 
     Makie.record(fig, path, eachindex(result.state_history); framerate=framerate) do frame
-        color_values[] = JuliaDG.elastic_plot_data(result, frame; field=field).values
+        color_values[] = JuliaDG.Elastodynamics.plot_data(result, frame; field=field).values
     end
 
     return path

@@ -1,7 +1,7 @@
 using JuliaDG
 using CairoMakie
 
-material = ElasticMaterial(1.0, 1.0, 0.5)
+material = JuliaDG.Elastodynamics.Material(1.0, 1.0, 0.5)
 
 function initial_pulse(x, y)
     r2 = (x - 0.5)^2 + (y - 0.5)^2
@@ -9,7 +9,7 @@ function initial_pulse(x, y)
     return (vx=0.0, vy=amplitude, sxx=0.0, syy=0.0, sxy=0.0)
 end
 
-result = solve_elastodynamics(
+result = JuliaDG.Elastodynamics.solve(
     initial_pulse;
     nx=8,
     ny=8,
@@ -20,9 +20,14 @@ result = solve_elastodynamics(
     save_history=true,
 )
 
-record_solution(result, "elastic_velocity_magnitude.gif"; field=:velocity_magnitude, framerate=20)
+JuliaDG.Elastodynamics.record(
+    result,
+    "elastic_velocity_magnitude.gif";
+    field=:velocity_magnitude,
+    framerate=20,
+)
 
 println("Elastic DOFs: ", length(result.state))
 println("Final time: ", result.times[end])
-println("Final energy: ", elastic_energy(result))
+println("Final energy: ", JuliaDG.Elastodynamics.energy(result))
 println("Saved elastic_velocity_magnitude.gif")

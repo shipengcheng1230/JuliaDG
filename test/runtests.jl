@@ -17,6 +17,27 @@ end
 
 const Poisson = JuliaDG.Poisson
 
+@testset "Elastodynamics public API" begin
+    @test isdefined(JuliaDG, :Elastodynamics)
+    @test Set(names(JuliaDG.Elastodynamics)) == Set([
+        :Elastodynamics, :Material, :Result, :solve, :evaluate, :energy,
+        :plot_data, :plot, :record,
+    ])
+    @test Set(names(JuliaDG)) == Set([
+        :Elastodynamics, :JuliaDG, :Poisson, :unit_square_mesh,
+    ])
+    for name in (
+        :ElasticMaterial, :ElasticResult, :solve_elastodynamics,
+        :evaluate_elastic_state, :elastic_energy, :elastic_plot_data,
+        :plot_solution, :record_solution,
+    )
+        @test !isdefined(JuliaDG, name)
+    end
+    @test :resolve_mesh ∉ names(JuliaDG)
+end
+
+const Elastodynamics = JuliaDG.Elastodynamics
+
 @testset "mesh" begin
     mesh = unit_square_mesh(1, 1)
     @test mesh isa Meshes.Mesh
@@ -34,7 +55,7 @@ const Poisson = JuliaDG.Poisson
         ((3, 4), (2, 0), (2, 0)),
         ((1, 3), (2, 0), (3, 0)),
     ]
-    @test resolve_mesh(mesh, 9, 9) === mesh
+    @test JuliaDG.resolve_mesh(mesh, 9, 9) === mesh
     @test !isdefined(JuliaDG, Symbol("Tri", "Mesh"))
     @test !isdefined(JuliaDG, Symbol("Tri", "Face"))
     @test !isdefined(JuliaDG, Symbol("mesh", "_backend"))
@@ -57,7 +78,7 @@ const Poisson = JuliaDG.Poisson
     @test count(facet -> facet.triangles[2] != 0, JuliaDG.facet_adjacencies(mesh2)) == 3
 
     try
-        resolve_mesh("not a mesh", 1, 1)
+        JuliaDG.resolve_mesh("not a mesh", 1, 1)
         @test false
     catch err
         @test err isa ArgumentError
@@ -153,14 +174,14 @@ end
 end
 
 @testset "elastic state layout" begin
-    material = ElasticMaterial(1.0, 2.0, 3.0)
+    material = Elastodynamics.Material(1.0, 2.0, 3.0)
     @test material.rho == 1.0
     @test material.lambda == 2.0
     @test material.mu == 3.0
 
     for args in ((0.0, 1.0, 1.0), (1.0, -0.1, 1.0), (1.0, 1.0, 0.0))
         try
-            ElasticMaterial(args...)
+            Elastodynamics.Material(args...)
             @test false
         catch err
             @test err isa ArgumentError
@@ -169,24 +190,24 @@ end
 
     mesh = unit_square_mesh(1, 1)
     triangle_total = JuliaDG.triangle_count(mesh)
-    @test JuliaDG.elastic_dof(1, 1, 1, triangle_total) == 1
-    @test JuliaDG.elastic_dof(1, 3, 1, triangle_total) == 3
-    @test JuliaDG.elastic_dof(2, 1, 1, triangle_total) == 4
-    @test JuliaDG.elastic_dof(1, 1, 2, triangle_total) == 7
-    @test JuliaDG.elastic_dof(2, 3, 5, triangle_total) == 30
+    @test Elastodynamics.dof(1, 1, 1, triangle_total) == 1
+    @test Elastodynamics.dof(1, 3, 1, triangle_total) == 3
+    @test Elastodynamics.dof(2, 1, 1, triangle_total) == 4
+    @test Elastodynamics.dof(1, 1, 2, triangle_total) == 7
+    @test Elastodynamics.dof(2, 3, 5, triangle_total) == 30
 
     named_initial = (x, y) -> (vx=x, vy=y, sxx=x + y, syy=x - y, sxy=2 * x - y)
     tuple_initial = (x, y) -> (x, y, x + y, x - y, 2 * x - y)
-    named_state = JuliaDG.interpolate_elastic_state(named_initial, mesh)
-    tuple_state = JuliaDG.interpolate_elastic_state(tuple_initial, mesh)
+    named_state = Elastodynamics.interpolate_state(named_initial, mesh)
+    tuple_state = Elastodynamics.interpolate_state(tuple_initial, mesh)
 
     @test length(named_state) == 5 * 3 * triangle_total
     @test tuple_state == named_state
-    @test JuliaDG.validate_elastic_boundary(:reflecting) == :reflecting
-    @test JuliaDG.validate_elastic_boundary(:traction_free) == :traction_free
+    @test Elastodynamics.validate_boundary(:reflecting) == :reflecting
+    @test Elastodynamics.validate_boundary(:traction_free) == :traction_free
 
     try
-        JuliaDG.validate_elastic_boundary(:periodic)
+        Elastodynamics.validate_boundary(:periodic)
         @test false
     catch err
         @test err isa ArgumentError
@@ -196,47 +217,47 @@ end
 
 @testset "elastic residual" begin
     mesh = unit_square_mesh(2, 2)
-    material = ElasticMaterial(1.0, 1.0, 0.5)
+    material = Elastodynamics.Material(1.0, 1.0, 0.5)
     ndofs = 5 * 3 * JuliaDG.triangle_count(mesh)
     state = zeros(ndofs)
     normal = (1.0, 0.0)
     interior = (1.0, 2.0, 3.0, 4.0, 5.0)
 
-    @test JuliaDG.pressure_wave_speed(material) ≈ sqrt(2.0)
-    @test JuliaDG.elastic_rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
-    @test JuliaDG.elastic_rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
+    @test Elastodynamics.pressure_wave_speed(material) ≈ sqrt(2.0)
+    @test Elastodynamics.rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
+    @test Elastodynamics.rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
     triangles = JuliaDG.oriented_triangle_connectivities(mesh)
     facets = JuliaDG.facet_adjacencies(mesh)
-    @test !applicable(JuliaDG.interpolate_elastic_state, (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0), mesh, triangles)
-    @test !applicable(JuliaDG.elastic_rhs, state, mesh, triangles, facets, material, :reflecting)
-    @test !applicable(JuliaDG.minimum_edge_length, mesh, triangles, facets)
-    @test !applicable(JuliaDG.default_elastic_dt, mesh, material, 0.1, triangles, facets)
-    @test !applicable(JuliaDG.ssprk3_step, state, 0.01, mesh, triangles, facets, material, :reflecting)
-    @test !isdefined(JuliaDG, :add_elastic_volume_terms!)
-    @test !isdefined(JuliaDG, :add_elastic_interior_face!)
-    @test !isdefined(JuliaDG, :add_elastic_boundary_face!)
-    @test !isdefined(JuliaDG, :elastic_triangle_energy)
-    @test JuliaDG.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
-    @test JuliaDG.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
-    reflected = JuliaDG.boundary_state(interior, normal, :reflecting)
+    @test !applicable(Elastodynamics.interpolate_state, (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0), mesh, triangles)
+    @test !applicable(Elastodynamics.rhs, state, mesh, triangles, facets, material, :reflecting)
+    @test !applicable(Elastodynamics.minimum_edge_length, mesh, triangles, facets)
+    @test !applicable(Elastodynamics.default_dt, mesh, material, 0.1, triangles, facets)
+    @test !applicable(Elastodynamics.ssprk3_step, state, 0.01, mesh, triangles, facets, material, :reflecting)
+    @test !isdefined(Elastodynamics, :add_volume_terms!)
+    @test !isdefined(Elastodynamics, :add_interior_face!)
+    @test !isdefined(Elastodynamics, :add_boundary_face!)
+    @test !isdefined(Elastodynamics, :triangle_energy)
+    @test Elastodynamics.boundary_state(interior, normal, :reflecting) == (-1.0, 2.0, 3.0, 4.0, -5.0)
+    @test Elastodynamics.boundary_state(interior, normal, :traction_free) == (1.0, 2.0, -3.0, 4.0, -5.0)
+    reflected = Elastodynamics.boundary_state(interior, normal, :reflecting)
     # LF/Rusanov dissipation must oppose the state jump for this residual convention.
-    @test collect(JuliaDG.normal_flux(interior, reflected, normal, material)) ≈
+    @test collect(Elastodynamics.normal_flux(interior, reflected, normal, material)) ≈
           [3 - sqrt(2.0), 0.0, 0.0, 0.0, 1 - 5 * sqrt(2.0)]
 
     mass_mesh = unit_square_mesh(1, 1)
     mass_triangle_total = JuliaDG.triangle_count(mass_mesh)
     residual = zeros(5 * 3 * mass_triangle_total)
-    residual[JuliaDG.elastic_dof(1, 1, 1, mass_triangle_total)] = 1.0
-    residual[JuliaDG.elastic_dof(1, 2, 1, mass_triangle_total)] = 2.0
-    residual[JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total)] = 3.0
-    mass_rhs = JuliaDG.apply_elastic_mass_inverse(residual, mass_mesh, mass_triangle_total)
-    @test mass_rhs[JuliaDG.elastic_dof(1, 1, 1, mass_triangle_total)] ≈ -12.0
-    @test mass_rhs[JuliaDG.elastic_dof(1, 2, 1, mass_triangle_total)] ≈ 12.0
-    @test mass_rhs[JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total)] ≈ 36.0
-    @test all(iszero, mass_rhs[(JuliaDG.elastic_dof(1, 3, 1, mass_triangle_total) + 1):end])
+    residual[Elastodynamics.dof(1, 1, 1, mass_triangle_total)] = 1.0
+    residual[Elastodynamics.dof(1, 2, 1, mass_triangle_total)] = 2.0
+    residual[Elastodynamics.dof(1, 3, 1, mass_triangle_total)] = 3.0
+    mass_rhs = Elastodynamics.apply_mass_inverse(residual, mass_mesh, mass_triangle_total)
+    @test mass_rhs[Elastodynamics.dof(1, 1, 1, mass_triangle_total)] ≈ -12.0
+    @test mass_rhs[Elastodynamics.dof(1, 2, 1, mass_triangle_total)] ≈ 12.0
+    @test mass_rhs[Elastodynamics.dof(1, 3, 1, mass_triangle_total)] ≈ 36.0
+    @test all(iszero, mass_rhs[(Elastodynamics.dof(1, 3, 1, mass_triangle_total) + 1):end])
 
     try
-        JuliaDG.elastic_rhs(state[1:(end - 1)], mesh, material, :reflecting)
+        Elastodynamics.rhs(state[1:(end - 1)], mesh, material, :reflecting)
         @test false
     catch err
         @test err isa ArgumentError
@@ -246,13 +267,13 @@ end
 
 @testset "elastic postprocess" begin
     mesh = unit_square_mesh(1, 1)
-    material = ElasticMaterial(1.0, 1.0, 0.5)
+    material = Elastodynamics.Material(1.0, 1.0, 0.5)
     initial = (x, y) -> (vx=x, vy=y, sxx=0.1 + x, syy=0.2 + y, sxy=0.3)
-    state = JuliaDG.interpolate_elastic_state(initial, mesh)
-    energy = JuliaDG.elastic_energy(mesh, state, material)
-    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting, nothing)
+    state = Elastodynamics.interpolate_state(initial, mesh)
+    energy = Elastodynamics.energy(mesh, state, material)
+    result = Elastodynamics.Result(mesh, state, material, [0.0], [energy], :reflecting, nothing)
 
-    value = evaluate_elastic_state(result, 0.25, 0.25)
+    value = Elastodynamics.evaluate(result, 0.25, 0.25)
     @test propertynames(value) == (:vx, :vy, :sxx, :syy, :sxy)
     @test all(isfinite, Tuple(value))
     @test value.vx ≈ 0.25
@@ -260,14 +281,14 @@ end
 
     @test isfinite(energy)
     @test energy >= 0.0
-    @test elastic_energy(result) ≈ energy
+    @test Elastodynamics.energy(result) ≈ energy
 
     zero_state = zeros(length(state))
-    zero_result = ElasticResult(mesh, zero_state, material, [0.0], [0.0], :reflecting, nothing)
-    @test elastic_energy(zero_result) ≈ 0.0
+    zero_result = Elastodynamics.Result(mesh, zero_state, material, [0.0], [0.0], :reflecting, nothing)
+    @test Elastodynamics.energy(zero_result) ≈ 0.0
 
     try
-        evaluate_elastic_state(result, -0.1, 0.2)
+        Elastodynamics.evaluate(result, -0.1, 0.2)
         @test false
     catch err
         @test err isa ArgumentError
@@ -280,7 +301,7 @@ end
     tuple_zero_initial = (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0)
 
     for boundary in (:reflecting, :traction_free)
-        result = solve_elastodynamics(
+        result = Elastodynamics.solve(
             zero_initial;
             nx=2,
             ny=2,
@@ -297,7 +318,7 @@ end
         @test result.energy_history[end] ≈ 0.0 atol = 1.0e-12
     end
 
-    cfl_result = solve_elastodynamics(
+    cfl_result = Elastodynamics.solve(
         tuple_zero_initial;
         nx=2,
         ny=2,
@@ -311,10 +332,10 @@ end
     @test length(cfl_result.energy_history) == length(cfl_result.times)
     @test all(isfinite, cfl_result.energy_history)
     @test norm(cfl_result.state) ≈ 0.0 atol = 1.0e-12
-    @test JuliaDG.default_elastic_dt(cfl_result.mesh, cfl_result.material, 0.1) > 0.0
-    @test JuliaDG.minimum_edge_length(cfl_result.mesh) > 0.0
+    @test Elastodynamics.default_dt(cfl_result.mesh, cfl_result.material, 0.1) > 0.0
+    @test Elastodynamics.minimum_edge_length(cfl_result.mesh) > 0.0
 
-    history_result = solve_elastodynamics(
+    history_result = Elastodynamics.solve(
         tuple_zero_initial;
         nx=2,
         ny=2,
@@ -330,7 +351,7 @@ end
     @test history_result.state_history[end] ≈ history_result.state
     @test all(state -> length(state) == length(history_result.state), history_result.state_history)
 
-    default_history_result = solve_elastodynamics(
+    default_history_result = Elastodynamics.solve(
         tuple_zero_initial;
         nx=2,
         ny=2,
@@ -344,7 +365,7 @@ end
         amplitude = exp(-80 * ((x - 0.5)^2 + (y - 0.5)^2))
         (vx=amplitude, vy=0.0, sxx=0.0, syy=0.0, sxy=0.0)
     end
-    pulse_result = solve_elastodynamics(
+    pulse_result = Elastodynamics.solve(
         pulse;
         nx=2,
         ny=2,
@@ -352,12 +373,12 @@ end
         dt=0.002,
         boundary=:reflecting,
     )
-    value = evaluate_elastic_state(pulse_result, 0.5, 0.5)
+    value = Elastodynamics.evaluate(pulse_result, 0.5, 0.5)
 
     @test pulse_result.times[end] == 0.005
     @test all(isfinite, Tuple(value))
-    @test isfinite(elastic_energy(pulse_result))
-    @test elastic_energy(pulse_result) >= 0.0
+    @test isfinite(Elastodynamics.energy(pulse_result))
+    @test Elastodynamics.energy(pulse_result) >= 0.0
 
     elastic_custom_points = [
         Meshes.Point(0.0, 0.0),
@@ -366,7 +387,7 @@ end
     ]
     elastic_custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
     elastic_custom_mesh = Meshes.SimpleMesh(elastic_custom_points, elastic_custom_connectivities)
-    elastic_custom_result = solve_elastodynamics(
+    elastic_custom_result = Elastodynamics.solve(
         tuple_zero_initial;
         mesh=elastic_custom_mesh,
         tspan=(0.0, 0.01),
@@ -379,7 +400,7 @@ end
     @test norm(elastic_custom_result.state) ≈ 0.0 atol = 1.0e-12
 
     try
-        solve_elastodynamics(zero_initial; nx=1, ny=1, tspan=(0.0, 0.0), boundary=:periodic)
+        Elastodynamics.solve(zero_initial; nx=1, ny=1, tspan=(0.0, 0.0), boundary=:periodic)
         @test false
     catch err
         @test err isa ArgumentError
@@ -534,13 +555,13 @@ end
 
 @testset "elastic plot data" begin
     mesh = unit_square_mesh(1, 1)
-    material = ElasticMaterial(1.0, 1.0, 0.5)
+    material = Elastodynamics.Material(1.0, 1.0, 0.5)
     initial = (x, y) -> (vx=x, vy=2 * y, sxx=x + y, syy=x - y, sxy=10 + x - y)
-    state = JuliaDG.interpolate_elastic_state(initial, mesh)
-    energy = JuliaDG.elastic_energy(mesh, state, material)
-    result = ElasticResult(mesh, state, material, [0.0], [energy], :reflecting, nothing)
+    state = Elastodynamics.interpolate_state(initial, mesh)
+    energy = Elastodynamics.energy(mesh, state, material)
+    result = Elastodynamics.Result(mesh, state, material, [0.0], [energy], :reflecting, nothing)
 
-    data = elastic_plot_data(result)
+    data = Elastodynamics.plot_data(result)
 
     @test length(data.xs) == length(state) ÷ 5
     @test length(data.ys) == length(state) ÷ 5
@@ -548,37 +569,37 @@ end
     @test data.triangles == [(1, 2, 3), (4, 5, 6)]
     @test data.values ≈ [sqrt(x^2 + (2 * y)^2) for (x, y) in zip(data.xs, data.ys)]
 
-    sxy_data = elastic_plot_data(result; field=:sxy)
+    sxy_data = Elastodynamics.plot_data(result; field=:sxy)
     @test sxy_data.xs == data.xs
     @test sxy_data.ys == data.ys
     @test sxy_data.triangles == data.triangles
     @test sxy_data.values ≈ [10 + x - y for (x, y) in zip(data.xs, data.ys)]
 
-    @test_throws ArgumentError elastic_plot_data(result; field=:pressure)
+    @test_throws ArgumentError Elastodynamics.plot_data(result; field=:pressure)
 
     state2 = copy(state)
     triangle_total = JuliaDG.triangle_count(mesh)
     for triangle in 1:triangle_total
-        for local_index in 1:JuliaDG.ELASTIC_LOCAL_DOF_COUNT
-            state2[JuliaDG.elastic_dof(triangle, local_index, 1, triangle_total)] = 3.0
-            state2[JuliaDG.elastic_dof(triangle, local_index, 2, triangle_total)] = 4.0
+        for local_index in 1:Elastodynamics.LOCAL_DOF_COUNT
+            state2[Elastodynamics.dof(triangle, local_index, 1, triangle_total)] = 3.0
+            state2[Elastodynamics.dof(triangle, local_index, 2, triangle_total)] = 4.0
         end
     end
-    history_result = ElasticResult(mesh, state2, material, [0.0, 0.1], [energy, energy], :reflecting, [state, state2])
-    frame_data = elastic_plot_data(history_result, 2)
+    history_result = Elastodynamics.Result(mesh, state2, material, [0.0, 0.1], [energy, energy], :reflecting, [state, state2])
+    frame_data = Elastodynamics.plot_data(history_result, 2)
 
     @test frame_data.values ≈ fill(5.0, length(frame_data.values))
-    @test_throws ArgumentError elastic_plot_data(result, 1)
-    @test_throws ArgumentError elastic_plot_data(history_result, 0)
-    @test_throws ArgumentError elastic_plot_data(history_result, 3)
+    @test_throws ArgumentError Elastodynamics.plot_data(result, 1)
+    @test_throws ArgumentError Elastodynamics.plot_data(history_result, 0)
+    @test_throws ArgumentError Elastodynamics.plot_data(history_result, 3)
 
     try
-        record_solution(result, "unused.gif")
+        Elastodynamics.record(result, "unused.gif")
         @test false
     catch err
         @test err isa ArgumentError
         @test err.msg ==
-              "record_solution requires Makie; load CairoMakie or GLMakie before calling it"
+              "record requires Makie; load CairoMakie or GLMakie before calling it"
     end
 end
 
