@@ -3,3 +3,4 @@ repos:
     rev: v2.5.2
     hooks:
       - id: julia-formatter
+        files: \.jl$
