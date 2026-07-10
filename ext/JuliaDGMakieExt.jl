@@ -5,46 +5,56 @@ using Makie
 
 function JuliaDG.Poisson.plot(
     result::JuliaDG.Poisson.Result;
-    colormap=:viridis,
-    show_mesh::Bool=true,
+    colormap = :viridis,
+    show_mesh::Bool = true,
 )
     data = JuliaDG.Poisson.plot_data(result)
-    return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label="u")
+    return plot_cell_data(
+        data;
+        colormap = colormap,
+        show_mesh = show_mesh,
+        colorbar_label = "u",
+    )
 end
 
 function JuliaDG.Elastodynamics.plot(
     result::JuliaDG.Elastodynamics.Result;
-    field::Symbol=:velocity_magnitude,
-    colormap=:viridis,
-    show_mesh::Bool=true,
+    field::Symbol = :velocity_magnitude,
+    colormap = :viridis,
+    show_mesh::Bool = true,
 )
-    data = JuliaDG.Elastodynamics.plot_data(result; field=field)
-    return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label=elastic_colorbar_label(field))
+    data = JuliaDG.Elastodynamics.plot_data(result; field = field)
+    return plot_cell_data(
+        data;
+        colormap = colormap,
+        show_mesh = show_mesh,
+        colorbar_label = elastic_colorbar_label(field),
+    )
 end
 
 function plot_cell_data(data; colormap, show_mesh::Bool, colorbar_label::AbstractString)
     vertices, faces = triangulation(data)
     fig = Makie.Figure()
-    ax = Makie.Axis(fig[1, 1]; xlabel="x", ylabel="y", aspect=Makie.DataAspect())
+    ax = Makie.Axis(fig[1, 1]; xlabel = "x", ylabel = "y", aspect = Makie.DataAspect())
     mesh_plot = Makie.mesh!(
         ax,
         vertices,
         faces;
-        color=data.values,
-        colormap=colormap,
-        shading=Makie.NoShading,
+        color = data.values,
+        colormap = colormap,
+        shading = Makie.NoShading,
     )
 
     if show_mesh
         Makie.linesegments!(
             ax,
             edge_segments(data);
-            color=(:black, 0.45),
-            linewidth=0.75,
+            color = (:black, 0.45),
+            linewidth = 0.75,
         )
     end
 
-    Makie.Colorbar(fig[1, 2], mesh_plot; label=colorbar_label)
+    Makie.Colorbar(fig[1, 2], mesh_plot; label = colorbar_label)
     Makie.autolimits!(ax)
     return fig
 end
@@ -62,7 +72,8 @@ function triangulation(data)
     return vertices, faces
 end
 
-elastic_colorbar_label(field::Symbol) = field === :velocity_magnitude ? "|v|" : String(field)
+elastic_colorbar_label(field::Symbol) =
+    field === :velocity_magnitude ? "|v|" : String(field)
 
 function edge_segments(data)
     points = Makie.Point2f[]
@@ -81,43 +92,47 @@ end
 function JuliaDG.Elastodynamics.record(
     result::JuliaDG.Elastodynamics.Result,
     path::AbstractString;
-    field::Symbol=:velocity_magnitude,
-    framerate::Real=20,
-    colormap=:viridis,
-    show_mesh::Bool=true,
+    field::Symbol = :velocity_magnitude,
+    framerate::Real = 20,
+    colormap = :viridis,
+    show_mesh::Bool = true,
 )
-    result.state_history === nothing &&
-        throw(ArgumentError("Elastodynamics.Result does not contain state history; solve with save_history=true"))
+    result.state_history === nothing && throw(
+        ArgumentError(
+            "Elastodynamics.Result does not contain state history; solve with save_history=true",
+        ),
+    )
 
-    first_data = JuliaDG.Elastodynamics.plot_data(result, 1; field=field)
+    first_data = JuliaDG.Elastodynamics.plot_data(result, 1; field = field)
     vertices, faces = triangulation(first_data)
 
     color_values = Makie.Observable(first_data.values)
     fig = Makie.Figure()
-    ax = Makie.Axis(fig[1, 1]; xlabel="x", ylabel="y", aspect=Makie.DataAspect())
+    ax = Makie.Axis(fig[1, 1]; xlabel = "x", ylabel = "y", aspect = Makie.DataAspect())
     mesh_plot = Makie.mesh!(
         ax,
         vertices,
         faces;
-        color=color_values,
-        colormap=colormap,
-        shading=Makie.NoShading,
+        color = color_values,
+        colormap = colormap,
+        shading = Makie.NoShading,
     )
 
     if show_mesh
         Makie.linesegments!(
             ax,
             edge_segments(first_data);
-            color=(:black, 0.45),
-            linewidth=0.75,
+            color = (:black, 0.45),
+            linewidth = 0.75,
         )
     end
 
-    Makie.Colorbar(fig[1, 2], mesh_plot; label=elastic_colorbar_label(field))
+    Makie.Colorbar(fig[1, 2], mesh_plot; label = elastic_colorbar_label(field))
     Makie.autolimits!(ax)
 
-    Makie.record(fig, path, eachindex(result.state_history); framerate=framerate) do frame
-        color_values[] = JuliaDG.Elastodynamics.plot_data(result, frame; field=field).values
+    Makie.record(fig, path, eachindex(result.state_history); framerate = framerate) do frame
+        color_values[] =
+            JuliaDG.Elastodynamics.plot_data(result, frame; field = field).values
     end
 
     return path

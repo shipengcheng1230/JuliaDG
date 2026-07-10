@@ -4,9 +4,16 @@ using LinearAlgebra
 using SparseArrays
 import Meshes
 using ..JuliaDG:
-    EDGE_QUADRATURE, LOCAL_EDGES, TRIANGLE_QUADRATURE,
-    barycentric_coordinates, basis_values_at_point, facet_adjacencies,
-    oriented_triangle_connectivities, physical_point, point_xy, resolve_mesh,
+    EDGE_QUADRATURE,
+    LOCAL_EDGES,
+    TRIANGLE_QUADRATURE,
+    barycentric_coordinates,
+    basis_values_at_point,
+    facet_adjacencies,
+    oriented_triangle_connectivities,
+    physical_point,
+    point_xy,
+    resolve_mesh,
     triangle_geometry
 
 export Result, assemble, solve, evaluate, l2_error, plot_data, plot
@@ -30,7 +37,7 @@ end
 normal_dot(grads::AbstractMatrix{<:Real}, local_index::Integer, normal) =
     grads[1, local_index] * normal[1] + grads[2, local_index] * normal[2]
 
-function assemble(mesh, f, g; penalty::Real=20.0)
+function assemble(mesh, f, g; penalty::Real = 20.0)
     triangles = oriented_triangle_connectivities(mesh)
     facets = facet_adjacencies(mesh)
     ndofs = 3 * length(triangles)
@@ -41,7 +48,7 @@ function assemble(mesh, f, g; penalty::Real=20.0)
 
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -69,9 +76,9 @@ function assemble(mesh, f, g; penalty::Real=20.0)
             coords = coordinates_for(points)
             area, grads = triangle_geometry(coords)
 
-            for test_local in 1:3
+            for test_local = 1:3
                 row = dof(triangle, test_local)
-                for trial_local in 1:3
+                for trial_local = 1:3
                     col = dof(triangle, trial_local)
                     stiffness = area * dot(grads[:, test_local], grads[:, trial_local])
                     add_entry!(rows, cols, values, row, col, stiffness)
@@ -81,8 +88,9 @@ function assemble(mesh, f, g; penalty::Real=20.0)
             for (lambdas, weight) in TRIANGLE_QUADRATURE
                 x, y = physical_point(coords, lambdas)
                 f_value = f(x, y)
-                for test_local in 1:3
-                    b[dof(triangle, test_local)] += area * weight * f_value * lambdas[test_local]
+                for test_local = 1:3
+                    b[dof(triangle, test_local)] +=
+                        area * weight * f_value * lambdas[test_local]
                 end
             end
         end
@@ -113,25 +121,28 @@ function assemble(mesh, f, g; penalty::Real=20.0)
             side_phi = (left_phi, right_phi)
             weight = h_face * weight_1d
 
-            for test_side in 1:2
-                for trial_side in 1:2
-                    for test_local in 1:3
+            for test_side = 1:2
+                for trial_side = 1:2
+                    for test_local = 1:3
                         row = dof(side_triangles[test_side], test_local)
                         jump_test = jump_signs[test_side] * side_phi[test_side][test_local]
                         avg_flux_test =
                             0.5 * normal_dot(side_grads[test_side], test_local, normal)
 
-                        for trial_local in 1:3
+                        for trial_local = 1:3
                             col = dof(side_triangles[trial_side], trial_local)
-                            jump_trial = jump_signs[trial_side] * side_phi[trial_side][trial_local]
+                            jump_trial =
+                                jump_signs[trial_side] * side_phi[trial_side][trial_local]
                             avg_flux_trial =
-                                0.5 * normal_dot(side_grads[trial_side], trial_local, normal)
+                                0.5 *
+                                normal_dot(side_grads[trial_side], trial_local, normal)
 
-                            value = weight * (
-                                -avg_flux_trial * jump_test -
-                                avg_flux_test * jump_trial +
-                                penalty / h_face * jump_trial * jump_test
-                            )
+                            value =
+                                weight * (
+                                    -avg_flux_trial * jump_test -
+                                    avg_flux_test * jump_trial +
+                                    penalty / h_face * jump_trial * jump_test
+                                )
                             add_entry!(rows, cols, values, row, col, value)
                         end
                     end
@@ -157,22 +168,23 @@ function assemble(mesh, f, g; penalty::Real=20.0)
             g_value = g(x, y)
             weight = h_face * weight_1d
 
-            for test_local in 1:3
+            for test_local = 1:3
                 row = dof(triangle, test_local)
                 flux_test = normal_dot(grads, test_local, normal)
 
-                for trial_local in 1:3
+                for trial_local = 1:3
                     col = dof(triangle, trial_local)
                     flux_trial = normal_dot(grads, trial_local, normal)
-                    value = weight * (
-                        -flux_trial * phi[test_local] -
-                        flux_test * phi[trial_local] +
-                        penalty / h_face * phi[trial_local] * phi[test_local]
-                    )
+                    value =
+                        weight * (
+                            -flux_trial * phi[test_local] - flux_test * phi[trial_local] +
+                            penalty / h_face * phi[trial_local] * phi[test_local]
+                        )
                     add_entry!(rows, cols, values, row, col, value)
                 end
 
-                b[row] += weight * (-flux_test + penalty / h_face * phi[test_local]) * g_value
+                b[row] +=
+                    weight * (-flux_test + penalty / h_face * phi[test_local]) * g_value
             end
         end
 
@@ -199,14 +211,14 @@ end
 
 function solve(
     f;
-    nx::Integer=8,
-    ny::Integer=8,
-    mesh=nothing,
-    g=(x, y) -> 0.0,
-    penalty::Real=20.0,
+    nx::Integer = 8,
+    ny::Integer = 8,
+    mesh = nothing,
+    g = (x, y) -> 0.0,
+    penalty::Real = 20.0,
 )
     poisson_mesh = resolve_mesh(mesh, nx, ny)
-    A, b = assemble(poisson_mesh, f, g; penalty=penalty)
+    A, b = assemble(poisson_mesh, f, g; penalty = penalty)
     coeffs = A \ b
     return Result(poisson_mesh, Vector{Float64}(coeffs), A, b)
 end
@@ -215,7 +227,7 @@ function evaluate(result::Result, x::Real, y::Real)
     triangles = oriented_triangle_connectivities(result.mesh)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             px, py = point_xy(result.mesh, points[local_index])
             coords[1, local_index] = px
             coords[2, local_index] = py
@@ -229,7 +241,7 @@ function evaluate(result::Result, x::Real, y::Real)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
             value = 0.0
-            for local_index in 1:3
+            for local_index = 1:3
                 value += result.coeffs[dof(triangle, local_index)] * lambdas[local_index]
             end
             return value
@@ -244,7 +256,7 @@ function l2_error(result::Result, exact)
     triangles = oriented_triangle_connectivities(result.mesh)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             px, py = point_xy(result.mesh, points[local_index])
             coords[1, local_index] = px
             coords[2, local_index] = py
@@ -260,7 +272,7 @@ function l2_error(result::Result, exact)
             x, y = physical_point(coords, lambdas)
             numerical = sum(
                 result.coeffs[dof(triangle, local_index)] * lambdas[local_index] for
-                local_index in 1:3
+                local_index = 1:3
             )
             diff = numerical - exact(x, y)
             error_squared += area * weight * diff^2
@@ -274,8 +286,11 @@ function plot_data(result::Result)
     cell_points = oriented_triangle_connectivities(result.mesh)
     triangle_total = length(cell_points)
     expected_coeffs = 3 * triangle_total
-    length(result.coeffs) == expected_coeffs ||
-        throw(ArgumentError("Poisson.Result coefficient vector must contain three values per triangle"))
+    length(result.coeffs) == expected_coeffs || throw(
+        ArgumentError(
+            "Poisson.Result coefficient vector must contain three values per triangle",
+        ),
+    )
 
     xs = Vector{Float64}(undef, expected_coeffs)
     ys = Vector{Float64}(undef, expected_coeffs)
@@ -283,7 +298,7 @@ function plot_data(result::Result)
     triangles = Vector{NTuple{3,Int}}(undef, triangle_total)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(result.mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -296,7 +311,7 @@ function plot_data(result::Result)
         coords = coordinates_for(points)
         first_point = point_index
 
-        for local_index in 1:3
+        for local_index = 1:3
             xs[point_index] = coords[1, local_index]
             ys[point_index] = coords[2, local_index]
             values[point_index] = result.coeffs[dof(triangle, local_index)]
@@ -306,11 +321,13 @@ function plot_data(result::Result)
         triangles[triangle] = (first_point, first_point + 1, first_point + 2)
     end
 
-    return (xs=xs, ys=ys, values=values, triangles=triangles)
+    return (xs = xs, ys = ys, values = values, triangles = triangles)
 end
 
 function plot(args...; kwargs...)
-    throw(ArgumentError("plot requires Makie; load CairoMakie or GLMakie before calling it"))
+    throw(
+        ArgumentError("plot requires Makie; load CairoMakie or GLMakie before calling it"),
+    )
 end
 
 end

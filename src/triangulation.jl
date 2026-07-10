@@ -20,7 +20,7 @@ function unit_square_mesh(nx::Integer, ny::Integer)
     nx > 0 || throw(ArgumentError("nx must be positive"))
     ny > 0 || throw(ArgumentError("ny must be positive"))
 
-    grid = Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(nx, ny))
+    grid = Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims = (nx, ny))
     return Meshes.simplexify(grid)
 end
 
@@ -41,7 +41,8 @@ function triangle_connectivities(mesh::Meshes.Mesh)
     triangles = NTuple{3,Int}[]
     for connectivity in getproperty(topology, :connec)
         ids = getproperty(connectivity, :indices)
-        length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        length(ids) == 3 ||
+            throw(ArgumentError("only triangular Meshes meshes are supported"))
         push!(triangles, (Int(ids[1]), Int(ids[2]), Int(ids[3])))
     end
 
@@ -75,7 +76,8 @@ function triangle_count(mesh::Meshes.Mesh)
     count = 0
     for connectivity in getproperty(topology, :connec)
         ids = getproperty(connectivity, :indices)
-        length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        length(ids) == 3 ||
+            throw(ArgumentError("only triangular Meshes meshes are supported"))
         count += 1
     end
 
@@ -106,7 +108,8 @@ function triangle_points(mesh::Meshes.Mesh, triangle::Integer)
     for connectivity in getproperty(topology, :connec)
         count += 1
         ids = getproperty(connectivity, :indices)
-        length(ids) == 3 || throw(ArgumentError("only triangular Meshes meshes are supported"))
+        length(ids) == 3 ||
+            throw(ArgumentError("only triangular Meshes meshes are supported"))
         count == index && return oriented_points(ids)
     end
 
@@ -116,16 +119,20 @@ end
 function facet_adjacencies(mesh::Meshes.Mesh)
     triangles = oriented_triangle_connectivities(mesh)
     connectivities = [Meshes.connect(points, Meshes.Triangle) for points in triangles]
-    topology = Meshes.HalfEdgeTopology(connectivities; sort=false)
+    topology = Meshes.HalfEdgeTopology(connectivities; sort = false)
     edge_triangles = Meshes.Coboundary{1,2}(topology)
     edge4pair = getproperty(topology, :edge4pair)
     points_by_edge = Dict(edge => point_ids for (point_ids, edge) in edge4pair)
     ordered_edge(a::Int, b::Int) = a < b ? (a, b) : (b, a)
 
-    function local_edge_for_points(triangle_points::NTuple{3,Int}, edge_points::NTuple{2,Int})
-        for local_edge in 1:3
+    function local_edge_for_points(
+        triangle_points::NTuple{3,Int},
+        edge_points::NTuple{2,Int},
+    )
+        for local_edge = 1:3
             a, b = LOCAL_EDGES[local_edge]
-            ordered_edge(triangle_points[a], triangle_points[b]) == edge_points && return local_edge
+            ordered_edge(triangle_points[a], triangle_points[b]) == edge_points &&
+                return local_edge
         end
 
         throw(ArgumentError("edge is not part of triangle"))
@@ -148,7 +155,11 @@ function facet_adjacencies(mesh::Meshes.Mesh)
             right_edge = local_edge_for_points(triangles[right], point_ids)
             push!(facets, FacetAdjacency(point_ids, (left, right), (left_edge, right_edge)))
         else
-            throw(ArgumentError("triangular mesh edge must have one or two incident triangles"))
+            throw(
+                ArgumentError(
+                    "triangular mesh edge must have one or two incident triangles",
+                ),
+            )
         end
     end
 

@@ -4,10 +4,7 @@ const TRIANGLE_QUADRATURE = (
     ((1 / 6, 1 / 6, 2 / 3), 1 / 3),
 )
 
-const EDGE_QUADRATURE = (
-    (0.5 - 0.5 / sqrt(3.0), 0.5),
-    (0.5 + 0.5 / sqrt(3.0), 0.5),
-)
+const EDGE_QUADRATURE = ((0.5 - 0.5 / sqrt(3.0), 0.5), (0.5 + 0.5 / sqrt(3.0), 0.5))
 
 function triangle_geometry(coords::AbstractMatrix{<:Real})
     x1, y1 = coords[1, 1], coords[2, 1]
@@ -29,7 +26,7 @@ function triangle_coordinates(mesh, triangle::Integer)
     points = triangle_points(mesh, triangle)
     coords = Matrix{Float64}(undef, 2, 3)
 
-    for local_index in 1:3
+    for local_index = 1:3
         x, y = point_xy(mesh, points[local_index])
         coords[1, local_index] = x
         coords[2, local_index] = y
@@ -38,7 +35,8 @@ function triangle_coordinates(mesh, triangle::Integer)
     return coords
 end
 
-triangle_geometry(mesh, triangle::Integer) = triangle_geometry(triangle_coordinates(mesh, triangle))
+triangle_geometry(mesh, triangle::Integer) =
+    triangle_geometry(triangle_coordinates(mesh, triangle))
 
 function barycentric_coordinates(coords::AbstractMatrix{<:Real}, x::Real, y::Real)
     x1, y1 = coords[1, 1], coords[2, 1]
@@ -57,12 +55,17 @@ basis_values_at_point(coords::AbstractMatrix{<:Real}, x::Real, y::Real) =
     collect(barycentric_coordinates(coords, x, y))
 
 function physical_point(coords::AbstractMatrix{<:Real}, lambdas)
-    x = sum(lambdas[i] * coords[1, i] for i in 1:3)
-    y = sum(lambdas[i] * coords[2, i] for i in 1:3)
+    x = sum(lambdas[i] * coords[1, i] for i = 1:3)
+    y = sum(lambdas[i] * coords[2, i] for i = 1:3)
     return (Float64(x), Float64(y))
 end
 
-function point_in_triangle(coords::AbstractMatrix{<:Real}, x::Real, y::Real; tol::Real=1.0e-10)
+function point_in_triangle(
+    coords::AbstractMatrix{<:Real},
+    x::Real,
+    y::Real;
+    tol::Real = 1.0e-10,
+)
     lambdas = barycentric_coordinates(coords, x, y)
     return all(lambda -> lambda >= -tol && lambda <= 1 + tol, lambdas)
 end

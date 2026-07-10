@@ -1,9 +1,17 @@
 module Elastodynamics
 
 import Meshes
-using ..JuliaDG: EDGE_QUADRATURE, LOCAL_EDGES, TRIANGLE_QUADRATURE,
-    barycentric_coordinates, basis_values_at_point, facet_adjacencies,
-    oriented_triangle_connectivities, point_xy, resolve_mesh, triangle_geometry
+using ..JuliaDG:
+    EDGE_QUADRATURE,
+    LOCAL_EDGES,
+    TRIANGLE_QUADRATURE,
+    barycentric_coordinates,
+    basis_values_at_point,
+    facet_adjacencies,
+    oriented_triangle_connectivities,
+    point_xy,
+    resolve_mesh,
+    triangle_geometry
 
 export Material, Result, solve, evaluate, energy, plot_data, plot, record
 
@@ -51,8 +59,9 @@ end
 
 function components(value)
     if value isa NamedTuple
-        all(field -> hasproperty(value, field), FIELD_NAMES) ||
-            throw(ArgumentError("initial named tuple must contain vx, vy, sxx, syy, and sxy"))
+        all(field -> hasproperty(value, field), FIELD_NAMES) || throw(
+            ArgumentError("initial named tuple must contain vx, vy, sxx, syy, and sxy"),
+        )
         return (
             Float64(value.vx),
             Float64(value.vy),
@@ -73,7 +82,7 @@ function interpolate_state(initial, mesh)
     state = zeros(Float64, FIELD_COUNT * LOCAL_DOF_COUNT * triangle_total)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -83,9 +92,9 @@ function interpolate_state(initial, mesh)
 
     for (triangle, points) in pairs(triangles)
         coords = coordinates_for(points)
-        for local_index in 1:LOCAL_DOF_COUNT
+        for local_index = 1:LOCAL_DOF_COUNT
             values = components(initial(coords[1, local_index], coords[2, local_index]))
-            for field in 1:FIELD_COUNT
+            for field = 1:FIELD_COUNT
                 state[dof(triangle, local_index, field, triangle_total)] = values[field]
             end
         end
@@ -135,8 +144,9 @@ function normal_flux(left, right, normal, material::Material)
     alpha = pressure_wave_speed(material)
 
     return ntuple(
-        field -> 0.5 * (left_flux[field] + right_flux[field]) +
-                 -0.5 * alpha * (left[field] - right[field]),
+        field ->
+            0.5 * (left_flux[field] + right_flux[field]) +
+            -0.5 * alpha * (left[field] - right[field]),
         FIELD_COUNT,
     )
 end
@@ -145,7 +155,7 @@ function state_at_point(state::AbstractVector{<:Real}, cell::Integer, phi, ncell
     return ntuple(
         field -> sum(
             state[dof(cell, local_index, field, ncells)] * phi[local_index] for
-            local_index in 1:LOCAL_DOF_COUNT
+            local_index = 1:LOCAL_DOF_COUNT
         ),
         FIELD_COUNT,
     )
@@ -198,7 +208,8 @@ function traction_free_stress(sxx::Real, syy::Real, sxy::Real, normal)
 
     ghost_sxx = sxx - 4 * traction_x * nx + 2 * normal_traction * nx^2
     ghost_syy = syy - 4 * traction_y * ny + 2 * normal_traction * ny^2
-    ghost_sxy = sxy - 2 * (traction_x * ny + nx * traction_y) + 2 * normal_traction * nx * ny
+    ghost_sxy =
+        sxy - 2 * (traction_x * ny + nx * traction_y) + 2 * normal_traction * nx * ny
     return (ghost_sxx, ghost_syy, ghost_sxy)
 end
 
@@ -213,7 +224,7 @@ function rhs(state::AbstractVector{<:Real}, mesh, material::Material, boundary::
 
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -245,10 +256,10 @@ function rhs(state::AbstractVector{<:Real}, mesh, material::Material, boundary::
             x_flux = flux_x(q, material)
             y_flux = flux_y(q, material)
 
-            for local_index in 1:LOCAL_DOF_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
                 scale_x = -area * weight * grads[1, local_index]
                 scale_y = -area * weight * grads[2, local_index]
-                for field in 1:FIELD_COUNT
+                for field = 1:FIELD_COUNT
                     row = dof(triangle, local_index, field, triangle_total)
                     residual[row] += scale_x * x_flux[field] + scale_y * y_flux[field]
                 end
@@ -276,8 +287,8 @@ function rhs(state::AbstractVector{<:Real}, mesh, material::Material, boundary::
             flux = normal_flux(left_state, right_state, normal, material)
             weight = edge_length * weight_1d
 
-            for local_index in 1:LOCAL_DOF_COUNT
-                for field in 1:FIELD_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
+                for field = 1:FIELD_COUNT
                     residual[dof(left_triangle, local_index, field, triangle_total)] +=
                         weight * left_phi[local_index] * flux[field]
                     residual[dof(right_triangle, local_index, field, triangle_total)] -=
@@ -304,8 +315,8 @@ function rhs(state::AbstractVector{<:Real}, mesh, material::Material, boundary::
             flux = normal_flux(interior_state, ghost_state, normal, material)
             weight = edge_length * weight_1d
 
-            for local_index in 1:LOCAL_DOF_COUNT
-                for field in 1:FIELD_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
+                for field = 1:FIELD_COUNT
                     residual[dof(triangle, local_index, field, triangle_total)] +=
                         weight * phi[local_index] * flux[field]
                 end
@@ -334,7 +345,7 @@ function apply_mass_inverse(residual::AbstractVector{<:Real}, mesh, triangle_tot
     rhs = similar(Vector{Float64}(residual))
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -357,7 +368,7 @@ function apply_local_mass_inverse!(
     area::Real,
     triangle_total::Integer,
 )
-    for field in 1:FIELD_COUNT
+    for field = 1:FIELD_COUNT
         dof1 = dof(triangle, 1, field, triangle_total)
         dof2 = dof(triangle, 2, field, triangle_total)
         dof3 = dof(triangle, 3, field, triangle_total)
@@ -375,11 +386,11 @@ end
 
 function named_state(values)
     return (
-        vx=Float64(values[1]),
-        vy=Float64(values[2]),
-        sxx=Float64(values[3]),
-        syy=Float64(values[4]),
-        sxy=Float64(values[5]),
+        vx = Float64(values[1]),
+        vy = Float64(values[2]),
+        sxx = Float64(values[3]),
+        syy = Float64(values[4]),
+        sxy = Float64(values[5]),
     )
 end
 
@@ -388,7 +399,7 @@ function evaluate(result::Result, x::Real, y::Real)
     triangle_total = length(triangles)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             px, py = point_xy(result.mesh, points[local_index])
             coords[1, local_index] = px
             coords[2, local_index] = py
@@ -401,7 +412,9 @@ function evaluate(result::Result, x::Real, y::Real)
         lambdas = barycentric_coordinates(coords, x, y)
 
         if all(lambda -> lambda >= -1.0e-10 && lambda <= 1.0 + 1.0e-10, lambdas)
-            return named_state(state_at_point(result.state, triangle, lambdas, triangle_total))
+            return named_state(
+                state_at_point(result.state, triangle, lambdas, triangle_total),
+            )
         end
     end
 
@@ -421,7 +434,7 @@ function energy(mesh, state::AbstractVector{<:Real}, material::Material)
 
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -511,15 +524,15 @@ end
 
 function solve(
     initial;
-    nx::Integer=20,
-    ny::Integer=20,
-    mesh=nothing,
-    material::Material=Material(1.0, 1.0, 0.5),
-    tspan=(0.0, 0.1),
-    dt=nothing,
-    cfl::Real=0.1,
-    boundary::Symbol=:reflecting,
-    save_history::Bool=false,
+    nx::Integer = 20,
+    ny::Integer = 20,
+    mesh = nothing,
+    material::Material = Material(1.0, 1.0, 0.5),
+    tspan = (0.0, 0.1),
+    dt = nothing,
+    cfl::Real = 0.1,
+    boundary::Symbol = :reflecting,
+    save_history::Bool = false,
 )
     boundary = validate_boundary(boundary)
     t0 = Float64(tspan[1])
@@ -533,7 +546,7 @@ function solve(
     expected_length = FIELD_COUNT * LOCAL_DOF_COUNT * triangle_total
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(dg_mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -565,10 +578,10 @@ function solve(
             x_flux = flux_x(q, material)
             y_flux = flux_y(q, material)
 
-            for local_index in 1:LOCAL_DOF_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
                 scale_x = -area * weight * grads[1, local_index]
                 scale_y = -area * weight * grads[2, local_index]
-                for field in 1:FIELD_COUNT
+                for field = 1:FIELD_COUNT
                     row = dof(triangle, local_index, field, triangle_total)
                     residual[row] += scale_x * x_flux[field] + scale_y * y_flux[field]
                 end
@@ -591,13 +604,15 @@ function solve(
             x, y = edge_point_for(left_points, left_edge, s)
             left_phi = basis_values_at_point(left_coords, x, y)
             right_phi = basis_values_at_point(right_coords, x, y)
-            left_state = state_at_point(current_state, left_triangle, left_phi, triangle_total)
-            right_state = state_at_point(current_state, right_triangle, right_phi, triangle_total)
+            left_state =
+                state_at_point(current_state, left_triangle, left_phi, triangle_total)
+            right_state =
+                state_at_point(current_state, right_triangle, right_phi, triangle_total)
             flux = normal_flux(left_state, right_state, normal, material)
             weight = edge_length * weight_1d
 
-            for local_index in 1:LOCAL_DOF_COUNT
-                for field in 1:FIELD_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
+                for field = 1:FIELD_COUNT
                     residual[dof(left_triangle, local_index, field, triangle_total)] +=
                         weight * left_phi[local_index] * flux[field]
                     residual[dof(right_triangle, local_index, field, triangle_total)] -=
@@ -624,8 +639,8 @@ function solve(
             flux = normal_flux(interior_state, ghost_state, normal, material)
             weight = edge_length * weight_1d
 
-            for local_index in 1:LOCAL_DOF_COUNT
-                for field in 1:FIELD_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
+                for field = 1:FIELD_COUNT
                     residual[dof(triangle, local_index, field, triangle_total)] +=
                         weight * phi[local_index] * flux[field]
                 end
@@ -652,9 +667,11 @@ function solve(
         state = zeros(Float64, expected_length)
         for (triangle, points) in pairs(triangles)
             coords = coordinates_for(points)
-            for local_index in 1:LOCAL_DOF_COUNT
-                values = components(initial_condition(coords[1, local_index], coords[2, local_index]))
-                for field in 1:FIELD_COUNT
+            for local_index = 1:LOCAL_DOF_COUNT
+                values = components(
+                    initial_condition(coords[1, local_index], coords[2, local_index]),
+                )
+                for field = 1:FIELD_COUNT
                     state[dof(triangle, local_index, field, triangle_total)] = values[field]
                 end
             end
@@ -694,7 +711,8 @@ function solve(
 
     function default_dt_cached(cfl_value::Real)
         cfl_value > 0 || throw(ArgumentError("cfl must be positive"))
-        return Float64(cfl_value) * minimum_edge_length_cached() / pressure_wave_speed(material)
+        return Float64(cfl_value) * minimum_edge_length_cached() /
+               pressure_wave_speed(material)
     end
 
     function rhs_cached(current_state)
@@ -753,18 +771,21 @@ function solve(
 
     return Result(dg_mesh, state, material, times, energy_history, boundary, state_history)
 end
-function plot_data(result::Result; field::Symbol=:velocity_magnitude)
-    return plot_data(result.mesh, result.state; field=field)
+function plot_data(result::Result; field::Symbol = :velocity_magnitude)
+    return plot_data(result.mesh, result.state; field = field)
 end
 
-function plot_data(result::Result, frame::Integer; field::Symbol=:velocity_magnitude)
-    result.state_history === nothing &&
-        throw(ArgumentError("Elastodynamics.Result does not contain state history; solve with save_history=true"))
+function plot_data(result::Result, frame::Integer; field::Symbol = :velocity_magnitude)
+    result.state_history === nothing && throw(
+        ArgumentError(
+            "Elastodynamics.Result does not contain state history; solve with save_history=true",
+        ),
+    )
     1 <= frame <= length(result.state_history) || throw(ArgumentError("frame out of range"))
-    return plot_data(result.mesh, result.state_history[frame]; field=field)
+    return plot_data(result.mesh, result.state_history[frame]; field = field)
 end
 
-function plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_magnitude)
+function plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol = :velocity_magnitude)
     cell_points = oriented_triangle_connectivities(mesh)
     triangle_total = length(cell_points)
     expected_state = FIELD_COUNT * LOCAL_DOF_COUNT * triangle_total
@@ -779,7 +800,7 @@ function plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_
     field_index = plot_field_index(field)
     coordinates_for(points) = begin
         coords = Matrix{Float64}(undef, 2, 3)
-        for local_index in 1:3
+        for local_index = 1:3
             x, y = point_xy(mesh, points[local_index])
             coords[1, local_index] = x
             coords[2, local_index] = y
@@ -792,29 +813,37 @@ function plot_data(mesh, state::AbstractVector{<:Real}; field::Symbol=:velocity_
         coords = coordinates_for(points)
         first_point = point_index
 
-        for local_index in 1:LOCAL_DOF_COUNT
+        for local_index = 1:LOCAL_DOF_COUNT
             xs[point_index] = coords[1, local_index]
             ys[point_index] = coords[2, local_index]
-            values[point_index] = plot_value(state, triangle, local_index, field_index, triangle_total)
+            values[point_index] =
+                plot_value(state, triangle, local_index, field_index, triangle_total)
             point_index += 1
         end
 
         triangles[triangle] = (first_point, first_point + 1, first_point + 2)
     end
 
-    return (xs=xs, ys=ys, values=values, triangles=triangles)
+    return (xs = xs, ys = ys, values = values, triangles = triangles)
 end
 
 function plot_field_index(field::Symbol)
     field === :velocity_magnitude && return 0
 
     index = findfirst(==(field), FIELD_NAMES)
-    index === nothing &&
-        throw(ArgumentError("field must be :velocity_magnitude, :vx, :vy, :sxx, :syy, or :sxy"))
+    index === nothing && throw(
+        ArgumentError("field must be :velocity_magnitude, :vx, :vy, :sxx, :syy, or :sxy"),
+    )
     return index
 end
 
-function plot_value(state, cell::Integer, local_index::Integer, field_index::Integer, ncells::Integer)
+function plot_value(
+    state,
+    cell::Integer,
+    local_index::Integer,
+    field_index::Integer,
+    ncells::Integer,
+)
     if field_index == 0
         vx = state[dof(cell, local_index, 1, ncells)]
         vy = state[dof(cell, local_index, 2, ncells)]
@@ -825,11 +854,17 @@ function plot_value(state, cell::Integer, local_index::Integer, field_index::Int
 end
 
 function plot(args...; kwargs...)
-    throw(ArgumentError("plot requires Makie; load CairoMakie or GLMakie before calling it"))
+    throw(
+        ArgumentError("plot requires Makie; load CairoMakie or GLMakie before calling it"),
+    )
 end
 
 function record(args...; kwargs...)
-    throw(ArgumentError("record requires Makie; load CairoMakie or GLMakie before calling it"))
+    throw(
+        ArgumentError(
+            "record requires Makie; load CairoMakie or GLMakie before calling it",
+        ),
+    )
 end
 
 end
