@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml/badge.svg)](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml)
 
-JuliaDG is a minimal Julia package for solving the 2D Poisson equation on the unit square with a P1 discontinuous Galerkin SIPG method.
+JuliaDG is a minimal Julia package for 2D Poisson and first-order 2D elastodynamics, not a generic PDE framework.
 
 ```text
 -Delta u = f  in [0,1]^2
@@ -24,22 +24,24 @@ V1 intentionally stays small:
 ## API
 
 ```julia
-mesh = unit_square_mesh(nx, ny)
-A, b = assemble_poisson_sipg(mesh, f, g; penalty=20.0)
-result = solve_poisson(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
-custom_result = solve_poisson(f; mesh=mesh, g=(x, y) -> 0.0, penalty=20.0)
-u_xy = evaluate_solution(result, x, y)
-err = l2_error(result, exact)
+using JuliaDG
+
+mesh = JuliaDG.unit_square_mesh(8, 8)
+A, b = JuliaDG.Poisson.assemble(mesh, f, g; penalty=20.0)
+result = JuliaDG.Poisson.solve(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
+custom_result = JuliaDG.Poisson.solve(f; mesh=mesh, g=(x, y) -> 0.0, penalty=20.0)
+u_xy = JuliaDG.Poisson.evaluate(result, x, y)
+err = JuliaDG.Poisson.l2_error(result, exact)
 ```
 
 Main containers:
 
 ```julia
-DGResult(mesh, coeffs, A, b)
-ElasticResult(mesh, state, material, times, energy_history, boundary, state_history)
+JuliaDG.Poisson.Result(mesh, coeffs, A, b)
+JuliaDG.Elastodynamics.Result(mesh, state, material, times, energy_history, boundary, state_history)
 ```
 
-`mesh` is a triangular `Meshes.Mesh`. `unit_square_mesh(nx, ny)` returns a Meshes.jl simplex mesh, and `solve_poisson` / `solve_elastodynamics` accept custom triangular Meshes.jl meshes through the `mesh=` keyword. Each triangle owns three DG degrees of freedom.
+Both solvers accept `Meshes.Mesh`; `JuliaDG.unit_square_mesh` is only a convenience constructor and JuliaDG defines no mesh type of its own. Each triangle owns three DG degrees of freedom.
 
 ## SIPG Form
 
@@ -75,9 +77,9 @@ using JuliaDG
 exact(x, y) = sin(pi * x) * sin(pi * y)
 f(x, y) = 2 * pi^2 * exact(x, y)
 
-result = solve_poisson(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
+result = JuliaDG.Poisson.solve(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
 println("DOFs: ", length(result.coeffs))
-println("L2 error: ", l2_error(result, exact))
+println("L2 error: ", JuliaDG.Poisson.l2_error(result, exact))
 ```
 
 Run it with:
@@ -103,7 +105,7 @@ Minimal Gaussian pulse:
 ```julia
 using JuliaDG
 
-material = ElasticMaterial(1.0, 1.0, 0.5)
+material = JuliaDG.Elastodynamics.Material(1.0, 1.0, 0.5)
 
 initial_pulse(x, y) = (
     vx=0.0,
@@ -113,7 +115,7 @@ initial_pulse(x, y) = (
     sxy=0.0,
 )
 
-result = solve_elastodynamics(
+result = JuliaDG.Elastodynamics.solve(
     initial_pulse;
     nx=8,
     ny=8,
@@ -122,16 +124,14 @@ result = solve_elastodynamics(
     boundary=:reflecting,
 )
 
-println("Elastic DOFs: ", length(result.state))
-println("Final time: ", result.times[end])
-println("Final energy: ", elastic_energy(result))
+println("Final energy: ", JuliaDG.Elastodynamics.energy(result))
 ```
 
-V1 uses constant `ElasticMaterial(rho, lambda, mu)` values and supports `:reflecting` and `:traction_free` boundaries. Displacement output, spatially varying material, source terms, absorbing boundaries, mesh-file input, and higher-order elements are outside this first version.
+V1 uses constant `JuliaDG.Elastodynamics.Material(rho, lambda, mu)` values and supports `:reflecting` and `:traction_free` boundaries. Displacement output, spatially varying material, source terms, absorbing boundaries, mesh-file input, and higher-order elements are outside this first version.
 
 ## Optional Visualization
 
-JuliaDG keeps Makie optional. Install and load a Makie backend such as CairoMakie or GLMakie before calling `plot_solution`:
+JuliaDG keeps Makie optional. Install and load a Makie backend such as CairoMakie or GLMakie before calling `JuliaDG.Poisson.plot`:
 
 ```julia
 using JuliaDG
@@ -140,8 +140,8 @@ using CairoMakie
 exact(x, y) = sin(pi * x) * sin(pi * y)
 f(x, y) = 2 * pi^2 * exact(x, y)
 
-result = solve_poisson(f; nx=16, ny=16)
-fig = plot_solution(result)
+result = JuliaDG.Poisson.solve(f; nx=16, ny=16)
+fig = JuliaDG.Poisson.plot(result)
 save("solution.png", fig)
 ```
 
