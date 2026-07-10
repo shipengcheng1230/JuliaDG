@@ -4,6 +4,19 @@ using Test
 using JuliaDG
 import Meshes
 
+@testset "Poisson public API" begin
+    @test isdefined(JuliaDG, :Poisson)
+    @test Set(names(JuliaDG.Poisson)) == Set([
+        :Poisson, :Result, :assemble, :solve, :evaluate, :l2_error, :plot_data, :plot,
+    ])
+    for name in (:DGResult, :assemble_poisson_sipg, :solve_poisson,
+                 :evaluate_solution, :l2_error, :dg_plot_data)
+        @test !isdefined(JuliaDG, name)
+    end
+end
+
+const Poisson = JuliaDG.Poisson
+
 @testset "mesh" begin
     mesh = unit_square_mesh(1, 1)
     @test mesh isa Meshes.Mesh
@@ -379,7 +392,7 @@ end
     f = (x, y) -> 1.0
     g = (x, y) -> 0.0
 
-    A, b = assemble_poisson_sipg(mesh, f, g; penalty=20.0)
+    A, b = Poisson.assemble(mesh, f, g; penalty=20.0)
     ndofs = 3 * JuliaDG.triangle_count(mesh)
 
     @test size(A) == (ndofs, ndofs)
@@ -392,11 +405,11 @@ end
 
     zero_f = (x, y) -> 0.0
     zero_g = (x, y) -> 0.0
-    A0, b0 = assemble_poisson_sipg(mesh, zero_f, zero_g; penalty=20.0)
+    A0, b0 = Poisson.assemble(mesh, zero_f, zero_g; penalty=20.0)
     @test isapprox(norm(A0 \ b0), 0.0; atol=1.0e-12)
 
     raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(2, 2)))
-    A_raw, b_raw = assemble_poisson_sipg(raw, f, g; penalty=20.0)
+    A_raw, b_raw = Poisson.assemble(raw, f, g; penalty=20.0)
     raw_ndofs = 3 * JuliaDG.triangle_count(raw)
 
     @test size(A_raw) == (raw_ndofs, raw_ndofs)
@@ -444,21 +457,21 @@ end
     exact = (x, y) -> sin(pi * x) * sin(pi * y)
     f = (x, y) -> 2 * pi^2 * exact(x, y)
 
-    coarse = solve_poisson(f; nx=3, ny=3, g=(x, y) -> 0.0, penalty=30.0)
-    fine = solve_poisson(f; nx=6, ny=6, g=(x, y) -> 0.0, penalty=30.0)
+    coarse = Poisson.solve(f; nx=3, ny=3, g=(x, y) -> 0.0, penalty=30.0)
+    fine = Poisson.solve(f; nx=6, ny=6, g=(x, y) -> 0.0, penalty=30.0)
 
-    coarse_error = l2_error(coarse, exact)
-    fine_error = l2_error(fine, exact)
+    coarse_error = Poisson.l2_error(coarse, exact)
+    fine_error = Poisson.l2_error(fine, exact)
 
     @test fine_error < coarse_error
-    @test evaluate_solution(fine, 0.5, 0.5) isa Float64
+    @test Poisson.evaluate(fine, 0.5, 0.5) isa Float64
 
     affine = (x, y) -> 1.0 + x + 2.0 * y
     zero_f = (x, y) -> 0.0
-    affine_result = solve_poisson(zero_f; nx=3, ny=3, g=affine, penalty=30.0)
+    affine_result = Poisson.solve(zero_f; nx=3, ny=3, g=affine, penalty=30.0)
 
-    @test l2_error(affine_result, affine) < 1.0e-8
-    @test_throws ArgumentError evaluate_solution(affine_result, -0.1, 0.2)
+    @test Poisson.l2_error(affine_result, affine) < 1.0e-8
+    @test_throws ArgumentError Poisson.evaluate(affine_result, -0.1, 0.2)
 
     custom_points = [
         Meshes.Point(0.0, 0.0),
@@ -467,7 +480,7 @@ end
     ]
     custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
     custom_mesh = Meshes.SimpleMesh(custom_points, custom_connectivities)
-    custom_result = solve_poisson(
+    custom_result = Poisson.solve(
         zero_f;
         mesh=custom_mesh,
         g=affine,
@@ -476,16 +489,16 @@ end
 
     @test custom_result.mesh === custom_mesh
     @test length(custom_result.coeffs) == 3
-    @test l2_error(custom_result, affine) < 1.0e-8
+    @test Poisson.l2_error(custom_result, affine) < 1.0e-8
 end
 
 @testset "plot data" begin
     mesh = unit_square_mesh(1, 1)
     ndofs = 3 * JuliaDG.triangle_count(mesh)
     coeffs = Float64.(1:ndofs)
-    result = DGResult(mesh, coeffs, spzeros(ndofs, ndofs), zeros(ndofs))
+    result = Poisson.Result(mesh, coeffs, spzeros(ndofs, ndofs), zeros(ndofs))
 
-    data = dg_plot_data(result)
+    data = Poisson.plot_data(result)
 
     @test length(data.xs) == ndofs
     @test length(data.ys) == ndofs
@@ -500,22 +513,22 @@ end
     raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims=(1, 1)))
     raw_ndofs = 3 * JuliaDG.triangle_count(raw)
     raw_coeffs = Float64.(1:raw_ndofs)
-    raw_result = DGResult(raw, raw_coeffs, spzeros(raw_ndofs, raw_ndofs), zeros(raw_ndofs))
-    raw_data = dg_plot_data(raw_result)
+    raw_result = Poisson.Result(raw, raw_coeffs, spzeros(raw_ndofs, raw_ndofs), zeros(raw_ndofs))
+    raw_data = Poisson.plot_data(raw_result)
 
     @test raw_data.triangles == [(1, 2, 3), (4, 5, 6)]
     @test raw_data.values == raw_coeffs
 
-    bad_result = DGResult(mesh, coeffs[1:(end - 1)], spzeros(ndofs - 1, ndofs - 1), zeros(ndofs - 1))
-    @test_throws ArgumentError dg_plot_data(bad_result)
+    bad_result = Poisson.Result(mesh, coeffs[1:(end - 1)], spzeros(ndofs - 1, ndofs - 1), zeros(ndofs - 1))
+    @test_throws ArgumentError Poisson.plot_data(bad_result)
 
     try
-        plot_solution(result)
+        Poisson.plot(result)
         @test false
     catch err
         @test err isa ArgumentError
         @test err.msg ==
-              "plot_solution requires Makie; load CairoMakie or GLMakie before calling it"
+              "plot requires Makie; load CairoMakie or GLMakie before calling it"
     end
 end
 

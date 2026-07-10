@@ -3,8 +3,12 @@ module JuliaDGMakieExt
 using JuliaDG
 using Makie
 
-function JuliaDG.plot_solution(result::JuliaDG.DGResult; colormap=:viridis, show_mesh::Bool=true)
-    data = JuliaDG.dg_plot_data(result)
+function JuliaDG.Poisson.plot(
+    result::JuliaDG.Poisson.Result;
+    colormap=:viridis,
+    show_mesh::Bool=true,
+)
+    data = JuliaDG.Poisson.plot_data(result)
     return plot_cell_data(data; colormap=colormap, show_mesh=show_mesh, colorbar_label="u")
 end
 

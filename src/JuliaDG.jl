@@ -1,30 +1,14 @@
 module JuliaDG
 
-using LinearAlgebra
-using SparseArrays
 import Meshes
 
-export DGResult,
-    ElasticMaterial,
-    ElasticResult,
-    unit_square_mesh,
-    resolve_mesh,
-    assemble_poisson_sipg,
-    solve_poisson,
-    solve_elastodynamics,
-    evaluate_solution,
-    evaluate_elastic_state,
-    l2_error,
-    elastic_energy,
-    dg_plot_data,
-    elastic_plot_data,
-    plot_solution,
-    record_solution
+export Poisson, ElasticMaterial, ElasticResult, unit_square_mesh, resolve_mesh,
+    solve_elastodynamics, evaluate_elastic_state, elastic_energy,
+    elastic_plot_data, plot_solution, record_solution
 
 include("triangulation.jl")
 include("basis.jl")
-include("assembly.jl")
-include("solve.jl")
+include("poisson.jl")
 include("elastodynamics.jl")
 include("plotting.jl")
 
