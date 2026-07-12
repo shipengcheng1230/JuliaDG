@@ -2,6 +2,7 @@ using LinearAlgebra
 using SparseArrays
 using Test
 using JuliaDG
+using Gridap
 import Meshes
 
 @testset "Poisson public API" begin
@@ -44,7 +45,7 @@ const Poisson = JuliaDG.Poisson
         :record,
     ])
     @test Set(names(JuliaDG)) ==
-          Set([:Elastodynamics, :JuliaDG, :Poisson, :unit_square_mesh])
+          Set([:Elastodynamics, :JuliaDG, :Poisson, :unit_square_mesh, :unit_square_model])
     for name in (
         :ElasticMaterial,
         :ElasticResult,
@@ -61,6 +62,16 @@ const Poisson = JuliaDG.Poisson
 end
 
 const Elastodynamics = JuliaDG.Elastodynamics
+
+@testset "Gridap model foundation" begin
+    model = unit_square_model(2, 3)
+
+    @test model isa Gridap.DiscreteModel
+    @test Gridap.num_dims(model) == 2
+    @test "boundary" in Gridap.Geometry.get_tag_name(Gridap.get_face_labeling(model))
+    @test_throws ArgumentError unit_square_model(0, 3)
+    @test_throws ArgumentError unit_square_model(2, 0)
+end
 
 @testset "mesh" begin
     mesh = unit_square_mesh(1, 1)
