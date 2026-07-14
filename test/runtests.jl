@@ -1,71 +1,30 @@
-using LinearAlgebra
-using SparseArrays
 using Test
 using JuliaDG
 using Gridap
-import Meshes
-
-@testset "Poisson public API" begin
-    @test isdefined(JuliaDG, :Poisson)
-    @test Set(names(JuliaDG.Poisson)) == Set([
-        :Poisson,
-        :Result,
-        :assemble,
-        :solve,
-        :evaluate,
-        :l2_error,
-        :plot_data,
-        :plot,
-    ])
-    for name in (
-        :DGResult,
-        :assemble_poisson_sipg,
-        :solve_poisson,
-        :evaluate_solution,
-        :l2_error,
-        :dg_plot_data,
-    )
-        @test !isdefined(JuliaDG, name)
-    end
-end
 
 const Poisson = JuliaDG.Poisson
 
-@testset "Elastodynamics public API" begin
-    @test isdefined(JuliaDG, :Elastodynamics)
-    @test Set(names(JuliaDG.Elastodynamics)) == Set([
-        :Elastodynamics,
-        :Material,
-        :Result,
-        :solve,
-        :evaluate,
-        :energy,
-        :plot_data,
-        :plot,
-        :record,
-    ])
-    @test Set(names(JuliaDG)) ==
-          Set([:Elastodynamics, :JuliaDG, :Poisson, :unit_square_mesh, :unit_square_model])
-    for name in (
-        :ElasticMaterial,
-        :ElasticResult,
-        :solve_elastodynamics,
-        :evaluate_elastic_state,
-        :elastic_energy,
-        :elastic_plot_data,
-        :plot_solution,
-        :record_solution,
+function tagged_unit_square_model(nx::Integer = 8, ny::Integer = 8)
+    model = unit_square_model(nx, ny)
+    labels = Gridap.get_face_labeling(model)
+    topology = Gridap.Geometry.get_grid_topology(model)
+
+    left = Gridap.Geometry.face_labeling_from_vertex_filter(
+        topology,
+        "left",
+        x -> isapprox(x[1], 0.0; atol = 1.0e-12),
     )
-        @test !isdefined(JuliaDG, name)
-    end
-    @test :resolve_mesh ∉ names(JuliaDG)
+    right = Gridap.Geometry.face_labeling_from_vertex_filter(
+        topology,
+        "right",
+        x -> isapprox(x[1], 1.0; atol = 1.0e-12),
+    )
+    merge!(labels, left, right)
+    return model
 end
 
-const Elastodynamics = JuliaDG.Elastodynamics
-
-@testset "Gridap model foundation" begin
+@testset "Gridap model and tag contract" begin
     model = unit_square_model(2, 3)
-
     @test model isa Gridap.DiscreteModel
     @test Gridap.num_dims(model) == 2
     @test "boundary" in Gridap.Geometry.get_tag_name(Gridap.get_face_labeling(model))
@@ -73,623 +32,60 @@ const Elastodynamics = JuliaDG.Elastodynamics
     @test_throws ArgumentError unit_square_model(2, 0)
 end
 
-@testset "mesh" begin
-    mesh = unit_square_mesh(1, 1)
-    @test mesh isa Meshes.Mesh
-    @test length(mesh) == JuliaDG.triangle_count(mesh)
-    @test getproperty(Meshes.topology(mesh), :connec)[1].indices == (1, 2, 4)
-    @test JuliaDG.triangle_connectivities(mesh) == [(1, 2, 4), (1, 4, 3)]
-    @test JuliaDG.triangle_count(mesh) == 2
-    @test length(JuliaDG.facet_adjacencies(mesh)) == 5
-    @test count(facet -> facet.triangles[2] == 0, JuliaDG.facet_adjacencies(mesh)) == 4
-    @test count(facet -> facet.triangles[2] != 0, JuliaDG.facet_adjacencies(mesh)) == 1
-    @test map(
-        facet -> (facet.point_ids, facet.triangles, facet.local_edges),
-        JuliaDG.facet_adjacencies(mesh),
-    ) == [
-        ((1, 2), (1, 0), (1, 0)),
-        ((2, 4), (1, 0), (2, 0)),
-        ((1, 4), (1, 2), (3, 1)),
-        ((3, 4), (2, 0), (2, 0)),
-        ((1, 3), (2, 0), (3, 0)),
-    ]
-    @test JuliaDG.resolve_mesh(mesh, 9, 9) === mesh
-    @test !isdefined(JuliaDG, Symbol("Tri", "Mesh"))
-    @test !isdefined(JuliaDG, Symbol("Tri", "Face"))
-    @test !isdefined(JuliaDG, Symbol("mesh", "_backend"))
+@testset "conforming Poisson" begin
+    model = unit_square_model(4, 4)
+    affine(x) = 1.0 + x[1] + 2.0 * x[2]
+    zero_source(x) = 0.0
 
-    clockwise_points =
-        [Meshes.Point(0.0, 0.0), Meshes.Point(1.0, 0.0), Meshes.Point(0.0, 1.0)]
-    clockwise_connectivities = [Meshes.connect((1, 3, 2), Meshes.Triangle)]
-    clockwise = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
+    affine_result =
+        Poisson.solve(model, zero_source; dirichlet_tags = "boundary", dirichlet = affine)
+    @test affine_result.model === model
+    @test affine_result.order == 1
+    @test Poisson.l2_error(affine_result, affine) < 1.0e-10
 
-    @test JuliaDG.triangle_geometry(clockwise, 1)[1] ≈ 0.5
-
-    mesh2 = unit_square_mesh(2, 1)
-    @test length(Meshes.vertices(mesh2)) == 6
-    @test JuliaDG.triangle_count(mesh2) == 4
-    @test length(JuliaDG.facet_adjacencies(mesh2)) == 9
-    @test count(facet -> facet.triangles[2] == 0, JuliaDG.facet_adjacencies(mesh2)) == 6
-    @test count(facet -> facet.triangles[2] != 0, JuliaDG.facet_adjacencies(mesh2)) == 3
-
-    try
-        JuliaDG.resolve_mesh("not a mesh", 1, 1)
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "mesh must be nothing or Meshes.Mesh"
-    end
-
-    @test_throws ArgumentError unit_square_mesh(0, 1)
-    @test_throws ArgumentError unit_square_mesh(1, 0)
-end
-
-@testset "Meshes triangle queries" begin
-    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims = (1, 1)))
-
-    @test raw isa Meshes.Mesh
-    @test !isdefined(JuliaDG, :orient_triangle_points)
-    @test !isdefined(JuliaDG, :local_edge_for_points)
-    @test !applicable(JuliaDG.facet_adjacencies, [(1, 2, 3)])
-    @test JuliaDG.point_xy(raw, 1) == (0.0, 0.0)
-    @test JuliaDG.point_xy(raw, 4) == (1.0, 1.0)
-    @test JuliaDG.triangle_connectivities(raw) == [(1, 2, 4), (1, 4, 3)]
-    @test JuliaDG.oriented_triangle_connectivities(raw) == [(1, 2, 4), (1, 4, 3)]
-    @test JuliaDG.triangle_count(raw) == 2
-    @test JuliaDG.triangle_points(raw, 1) == (1, 2, 4)
-    @test JuliaDG.triangle_points(raw, 2) == (1, 4, 3)
-
-    struct IteratorOnlyConnectivity
-        indices::NTuple{3,Int}
-    end
-
-    struct IteratorOnlyConnectivities
-        items::Vector{IteratorOnlyConnectivity}
-    end
-
-    Base.iterate(connectivities::IteratorOnlyConnectivities, state::Int = 1) =
-        state > length(connectivities.items) ? nothing :
-        (connectivities.items[state], state + 1)
-    Base.length(::IteratorOnlyConnectivities) = error("length is not supported")
-    Base.getindex(::IteratorOnlyConnectivities, ::Int) = error("indexing is not supported")
-
-    struct IteratorOnlyTopology <: Meshes.Topology
-        connec::IteratorOnlyConnectivities
-    end
-
-    IteratorOnlyPoint = typeof(Meshes.Point(0.0, 0.0))
-    IteratorOnlyCRS = typeof(Meshes.coords(Meshes.Point(0.0, 0.0)))
-
-    struct IteratorOnlyMesh <: Meshes.Mesh{Meshes.𝔼{2},IteratorOnlyCRS,IteratorOnlyTopology}
-        points::Vector{IteratorOnlyPoint}
-        topology::IteratorOnlyTopology
-    end
-
-    Meshes.vertices(mesh::IteratorOnlyMesh) = mesh.points
-    Meshes.topology(mesh::IteratorOnlyMesh) = mesh.topology
-
-    iterator_only = IteratorOnlyMesh(
-        [Meshes.Point(0.0, 0.0), Meshes.Point(1.0, 0.0), Meshes.Point(0.0, 1.0)],
-        IteratorOnlyTopology(
-            IteratorOnlyConnectivities([IteratorOnlyConnectivity((1, 3, 2))]),
-        ),
+    exact(x) = sin(pi * x[1]) * sin(pi * x[2])
+    source(x) = 2 * pi^2 * exact(x)
+    coarse = Poisson.solve(
+        unit_square_model(8, 8),
+        source;
+        dirichlet_tags = "boundary",
+        dirichlet = x -> 0.0,
     )
-
-    @test JuliaDG.triangle_points(iterator_only, 1) == (1, 2, 3)
-
-    facets = JuliaDG.facet_adjacencies(raw)
-    @test length(facets) == 5
-    @test count(facet -> facet.triangles[2] == 0, facets) == 4
-    @test count(facet -> facet.triangles[2] != 0, facets) == 1
-    @test map(facet -> (facet.point_ids, facet.triangles, facet.local_edges), facets) == [
-        ((1, 2), (1, 0), (1, 0)),
-        ((2, 4), (1, 0), (2, 0)),
-        ((1, 4), (1, 2), (3, 1)),
-        ((3, 4), (2, 0), (2, 0)),
-        ((1, 3), (2, 0), (3, 0)),
-    ]
-
-    clockwise_points =
-        [Meshes.Point(0.0, 0.0), Meshes.Point(1.0, 0.0), Meshes.Point(0.0, 1.0)]
-    clockwise_connectivities = [Meshes.connect((1, 3, 2), Meshes.Triangle)]
-    clockwise = Meshes.SimpleMesh(clockwise_points, clockwise_connectivities)
-
-    @test JuliaDG.triangle_connectivities(clockwise) == [(1, 3, 2)]
-    @test JuliaDG.triangle_points(clockwise, 1) == (1, 2, 3)
-    @test JuliaDG.oriented_triangle_connectivities(clockwise) == [(1, 2, 3)]
-    @test map(
-        facet -> (facet.point_ids, facet.triangles, facet.local_edges),
-        JuliaDG.facet_adjacencies(clockwise),
-    ) == [((1, 2), (1, 0), (1, 0)), ((2, 3), (1, 0), (2, 0)), ((1, 3), (1, 0), (3, 0))]
-end
-
-@testset "elastic state layout" begin
-    material = Elastodynamics.Material(1.0, 2.0, 3.0)
-    @test material.rho == 1.0
-    @test material.lambda == 2.0
-    @test material.mu == 3.0
-
-    for args in ((0.0, 1.0, 1.0), (1.0, -0.1, 1.0), (1.0, 1.0, 0.0))
-        try
-            Elastodynamics.Material(args...)
-            @test false
-        catch err
-            @test err isa ArgumentError
-        end
-    end
-
-    mesh = unit_square_mesh(1, 1)
-    triangle_total = JuliaDG.triangle_count(mesh)
-    @test Elastodynamics.dof(1, 1, 1, triangle_total) == 1
-    @test Elastodynamics.dof(1, 3, 1, triangle_total) == 3
-    @test Elastodynamics.dof(2, 1, 1, triangle_total) == 4
-    @test Elastodynamics.dof(1, 1, 2, triangle_total) == 7
-    @test Elastodynamics.dof(2, 3, 5, triangle_total) == 30
-
-    named_initial = (x, y) -> (vx = x, vy = y, sxx = x + y, syy = x - y, sxy = 2 * x - y)
-    tuple_initial = (x, y) -> (x, y, x + y, x - y, 2 * x - y)
-    named_state = Elastodynamics.interpolate_state(named_initial, mesh)
-    tuple_state = Elastodynamics.interpolate_state(tuple_initial, mesh)
-
-    @test length(named_state) == 5 * 3 * triangle_total
-    @test tuple_state == named_state
-    @test Elastodynamics.validate_boundary(:reflecting) == :reflecting
-    @test Elastodynamics.validate_boundary(:traction_free) == :traction_free
-
-    try
-        Elastodynamics.validate_boundary(:periodic)
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "boundary must be :reflecting or :traction_free"
-    end
-end
-
-@testset "elastic residual" begin
-    mesh = unit_square_mesh(2, 2)
-    material = Elastodynamics.Material(1.0, 1.0, 0.5)
-    ndofs = 5 * 3 * JuliaDG.triangle_count(mesh)
-    state = zeros(ndofs)
-    normal = (1.0, 0.0)
-    interior = (1.0, 2.0, 3.0, 4.0, 5.0)
-
-    @test Elastodynamics.pressure_wave_speed(material) ≈ sqrt(2.0)
-    @test Elastodynamics.rhs(state, mesh, material, :reflecting) ≈ zeros(ndofs)
-    @test Elastodynamics.rhs(state, mesh, material, :traction_free) ≈ zeros(ndofs)
-    triangles = JuliaDG.oriented_triangle_connectivities(mesh)
-    facets = JuliaDG.facet_adjacencies(mesh)
-    @test !applicable(
-        Elastodynamics.interpolate_state,
-        (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0),
-        mesh,
-        triangles,
+    fine = Poisson.solve(
+        unit_square_model(16, 16),
+        source;
+        dirichlet_tags = "boundary",
+        dirichlet = x -> 0.0,
     )
-    @test !applicable(
-        Elastodynamics.rhs,
-        state,
-        mesh,
-        triangles,
-        facets,
-        material,
-        :reflecting,
+    @test Poisson.l2_error(fine, exact) < Poisson.l2_error(coarse, exact)
+
+    tagged_model = tagged_unit_square_model()
+    loaded = Poisson.solve(
+        tagged_model,
+        zero_source;
+        dirichlet_tags = "left",
+        dirichlet = x -> 0.0,
+        neumann_tags = "right",
+        neumann = x -> 1.0,
     )
-    @test !applicable(Elastodynamics.minimum_edge_length, mesh, triangles, facets)
-    @test !applicable(Elastodynamics.default_dt, mesh, material, 0.1, triangles, facets)
-    @test !applicable(
-        Elastodynamics.ssprk3_step,
-        state,
-        0.01,
-        mesh,
-        triangles,
-        facets,
-        material,
-        :reflecting,
+    @test Poisson.l2_error(loaded, x -> x[1]) < 1.0e-10
+
+    @test_throws ArgumentError Poisson.solve(
+        model,
+        zero_source;
+        dirichlet_tags = "missing",
+        dirichlet = x -> 0.0,
     )
-    @test !isdefined(Elastodynamics, :add_volume_terms!)
-    @test !isdefined(Elastodynamics, :add_interior_face!)
-    @test !isdefined(Elastodynamics, :add_boundary_face!)
-    @test !isdefined(Elastodynamics, :triangle_energy)
-    @test Elastodynamics.boundary_state(interior, normal, :reflecting) ==
-          (-1.0, 2.0, 3.0, 4.0, -5.0)
-    @test Elastodynamics.boundary_state(interior, normal, :traction_free) ==
-          (1.0, 2.0, -3.0, 4.0, -5.0)
-    reflected = Elastodynamics.boundary_state(interior, normal, :reflecting)
-    # LF/Rusanov dissipation must oppose the state jump for this residual convention.
-    @test collect(Elastodynamics.normal_flux(interior, reflected, normal, material)) ≈
-          [3 - sqrt(2.0), 0.0, 0.0, 0.0, 1 - 5 * sqrt(2.0)]
-
-    mass_mesh = unit_square_mesh(1, 1)
-    mass_triangle_total = JuliaDG.triangle_count(mass_mesh)
-    residual = zeros(5 * 3 * mass_triangle_total)
-    residual[Elastodynamics.dof(1, 1, 1, mass_triangle_total)] = 1.0
-    residual[Elastodynamics.dof(1, 2, 1, mass_triangle_total)] = 2.0
-    residual[Elastodynamics.dof(1, 3, 1, mass_triangle_total)] = 3.0
-    mass_rhs = Elastodynamics.apply_mass_inverse(residual, mass_mesh, mass_triangle_total)
-    @test mass_rhs[Elastodynamics.dof(1, 1, 1, mass_triangle_total)] ≈ -12.0
-    @test mass_rhs[Elastodynamics.dof(1, 2, 1, mass_triangle_total)] ≈ 12.0
-    @test mass_rhs[Elastodynamics.dof(1, 3, 1, mass_triangle_total)] ≈ 36.0
-    @test all(iszero, mass_rhs[(Elastodynamics.dof(1, 3, 1, mass_triangle_total)+1):end])
-
-    try
-        Elastodynamics.rhs(state[1:(end-1)], mesh, material, :reflecting)
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "elastic state length does not match mesh"
-    end
-end
-
-@testset "elastic postprocess" begin
-    mesh = unit_square_mesh(1, 1)
-    material = Elastodynamics.Material(1.0, 1.0, 0.5)
-    initial = (x, y) -> (vx = x, vy = y, sxx = 0.1 + x, syy = 0.2 + y, sxy = 0.3)
-    state = Elastodynamics.interpolate_state(initial, mesh)
-    energy = Elastodynamics.energy(mesh, state, material)
-    result =
-        Elastodynamics.Result(mesh, state, material, [0.0], [energy], :reflecting, nothing)
-
-    value = Elastodynamics.evaluate(result, 0.25, 0.25)
-    @test propertynames(value) == (:vx, :vy, :sxx, :syy, :sxy)
-    @test all(isfinite, Tuple(value))
-    @test value.vx ≈ 0.25
-    @test value.vy ≈ 0.25
-
-    @test isfinite(energy)
-    @test energy >= 0.0
-    @test Elastodynamics.energy(result) ≈ energy
-
-    zero_state = zeros(length(state))
-    zero_result = Elastodynamics.Result(
-        mesh,
-        zero_state,
-        material,
-        [0.0],
-        [0.0],
-        :reflecting,
-        nothing,
+    @test_throws ArgumentError Poisson.solve(
+        model,
+        zero_source;
+        dirichlet_tags = "boundary",
+        dirichlet = x -> 0.0,
+        neumann_tags = "boundary",
+        neumann = x -> 0.0,
     )
-    @test Elastodynamics.energy(zero_result) ≈ 0.0
-
-    try
-        Elastodynamics.evaluate(result, -0.1, 0.2)
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "point is outside the mesh"
-    end
-end
-
-@testset "elastic solve" begin
-    zero_initial = (x, y) -> (vx = 0.0, vy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0)
-    tuple_zero_initial = (x, y) -> (0.0, 0.0, 0.0, 0.0, 0.0)
-
-    for boundary in (:reflecting, :traction_free)
-        result = Elastodynamics.solve(
-            zero_initial;
-            nx = 2,
-            ny = 2,
-            tspan = (0.0, 0.03),
-            dt = 0.02,
-            boundary = boundary,
-        )
-
-        @test result.boundary == boundary
-        @test result.times[1] == 0.0
-        @test result.times[end] == 0.03
-        @test length(result.energy_history) == length(result.times)
-        @test norm(result.state) ≈ 0.0 atol = 1.0e-12
-        @test result.energy_history[end] ≈ 0.0 atol = 1.0e-12
-    end
-
-    cfl_result = Elastodynamics.solve(
-        tuple_zero_initial;
-        nx = 2,
-        ny = 2,
-        tspan = (0.0, 0.03),
-        boundary = :reflecting,
-    )
-
-    @test cfl_result.times[1] == 0.0
-    @test cfl_result.times[end] == 0.03
-    @test length(cfl_result.times) > 1
-    @test length(cfl_result.energy_history) == length(cfl_result.times)
-    @test all(isfinite, cfl_result.energy_history)
-    @test norm(cfl_result.state) ≈ 0.0 atol = 1.0e-12
-    @test Elastodynamics.default_dt(cfl_result.mesh, cfl_result.material, 0.1) > 0.0
-    @test Elastodynamics.minimum_edge_length(cfl_result.mesh) > 0.0
-
-    history_result = Elastodynamics.solve(
-        tuple_zero_initial;
-        nx = 2,
-        ny = 2,
-        tspan = (0.0, 0.03),
-        dt = 0.02,
-        boundary = :reflecting,
-        save_history = true,
-    )
-
-    @test history_result.state_history !== nothing
-    @test length(history_result.state_history) == length(history_result.times)
-    @test history_result.state_history[1] ≈ zeros(length(history_result.state))
-    @test history_result.state_history[end] ≈ history_result.state
-    @test all(
-        state -> length(state) == length(history_result.state),
-        history_result.state_history,
-    )
-
-    default_history_result = Elastodynamics.solve(
-        tuple_zero_initial;
-        nx = 2,
-        ny = 2,
-        tspan = (0.0, 0.03),
-        dt = 0.02,
-        boundary = :reflecting,
-    )
-    @test default_history_result.state_history === nothing
-
-    pulse = (x, y) -> begin
-        amplitude = exp(-80 * ((x - 0.5)^2 + (y - 0.5)^2))
-        (vx = amplitude, vy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0)
-    end
-    pulse_result = Elastodynamics.solve(
-        pulse;
-        nx = 2,
-        ny = 2,
-        tspan = (0.0, 0.005),
-        dt = 0.002,
-        boundary = :reflecting,
-    )
-    value = Elastodynamics.evaluate(pulse_result, 0.5, 0.5)
-
-    @test pulse_result.times[end] == 0.005
-    @test all(isfinite, Tuple(value))
-    @test isfinite(Elastodynamics.energy(pulse_result))
-    @test Elastodynamics.energy(pulse_result) >= 0.0
-
-    elastic_custom_points =
-        [Meshes.Point(0.0, 0.0), Meshes.Point(1.0, 0.0), Meshes.Point(0.0, 1.0)]
-    elastic_custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
-    elastic_custom_mesh =
-        Meshes.SimpleMesh(elastic_custom_points, elastic_custom_connectivities)
-    elastic_custom_result = Elastodynamics.solve(
-        tuple_zero_initial;
-        mesh = elastic_custom_mesh,
-        tspan = (0.0, 0.01),
-        dt = 0.01,
-        boundary = :reflecting,
-    )
-
-    @test elastic_custom_result.mesh === elastic_custom_mesh
-    @test length(elastic_custom_result.state) == 15
-    @test norm(elastic_custom_result.state) ≈ 0.0 atol = 1.0e-12
-
-    try
-        Elastodynamics.solve(
-            zero_initial;
-            nx = 1,
-            ny = 1,
-            tspan = (0.0, 0.0),
-            boundary = :periodic,
-        )
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "boundary must be :reflecting or :traction_free"
-    end
-end
-
-@testset "SIPG assembly" begin
-    mesh = unit_square_mesh(2, 2)
-    f = (x, y) -> 1.0
-    g = (x, y) -> 0.0
-
-    A, b = Poisson.assemble(mesh, f, g; penalty = 20.0)
-    ndofs = 3 * JuliaDG.triangle_count(mesh)
-
-    @test size(A) == (ndofs, ndofs)
-    @test A isa SparseMatrixCSC{Float64,Int}
-    @test length(b) == ndofs
-    @test isapprox(norm(Matrix(A - transpose(A))), 0.0; atol = 1.0e-10)
-
-    solution = A \ b
-    @test all(isfinite, solution)
-
-    zero_f = (x, y) -> 0.0
-    zero_g = (x, y) -> 0.0
-    A0, b0 = Poisson.assemble(mesh, zero_f, zero_g; penalty = 20.0)
-    @test isapprox(norm(A0 \ b0), 0.0; atol = 1.0e-12)
-
-    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims = (2, 2)))
-    A_raw, b_raw = Poisson.assemble(raw, f, g; penalty = 20.0)
-    raw_ndofs = 3 * JuliaDG.triangle_count(raw)
-
-    @test size(A_raw) == (raw_ndofs, raw_ndofs)
-    @test length(b_raw) == raw_ndofs
-    @test isapprox(norm(Matrix(A_raw - transpose(A_raw))), 0.0; atol = 1.0e-10)
-
-    @test !isdefined(JuliaDG, :assemble_triangle_terms!)
-    @test !isdefined(JuliaDG, :assemble_face_terms!)
-    @test !isdefined(JuliaDG, :assemble_interior_face!)
-    @test !isdefined(JuliaDG, :assemble_boundary_face!)
-end
-
-@testset "basis geometry" begin
-    mesh = unit_square_mesh(1, 1)
-    coords = JuliaDG.triangle_coordinates(mesh, 1)
-    points = JuliaDG.triangle_points(mesh, 1)
-    area, grads = JuliaDG.triangle_geometry(coords)
-
-    @test area ≈ 0.5
-    @test grads[:, 1] + grads[:, 2] + grads[:, 3] ≈ zeros(2)
-    @test !applicable(JuliaDG.triangle_coordinates, mesh, points)
-
-    centroid = (sum(coords[1, i] for i = 1:3) / 3, sum(coords[2, i] for i = 1:3) / 3)
-    lambdas = JuliaDG.barycentric_coordinates(coords, centroid[1], centroid[2])
-    @test collect(lambdas) ≈ fill(1 / 3, 3)
-
-    vertex_values = JuliaDG.basis_values_at_point(coords, coords[1, 1], coords[2, 1])
-    @test vertex_values ≈ [1.0, 0.0, 0.0]
-
-    normal, edge_len = JuliaDG.edge_normal(mesh, 1, 1)
-    @test collect(normal) ≈ [0.0, -1.0]
-    @test edge_len ≈ 1.0
-    @test !applicable(JuliaDG.edge_normal, mesh, points, 1)
-
-    x, y = JuliaDG.edge_point(mesh, 1, 1, 0.25)
-    @test x ≈ 0.25
-    @test y ≈ 0.0
-    @test !applicable(JuliaDG.edge_point, mesh, points, 1, 0.25)
-end
-
-@testset "solve and postprocess" begin
-    exact = (x, y) -> sin(pi * x) * sin(pi * y)
-    f = (x, y) -> 2 * pi^2 * exact(x, y)
-
-    coarse = Poisson.solve(f; nx = 3, ny = 3, g = (x, y) -> 0.0, penalty = 30.0)
-    fine = Poisson.solve(f; nx = 6, ny = 6, g = (x, y) -> 0.0, penalty = 30.0)
-
-    coarse_error = Poisson.l2_error(coarse, exact)
-    fine_error = Poisson.l2_error(fine, exact)
-
-    @test fine_error < coarse_error
-    @test Poisson.evaluate(fine, 0.5, 0.5) isa Float64
-
-    affine = (x, y) -> 1.0 + x + 2.0 * y
-    zero_f = (x, y) -> 0.0
-    affine_result = Poisson.solve(zero_f; nx = 3, ny = 3, g = affine, penalty = 30.0)
-
-    @test Poisson.l2_error(affine_result, affine) < 1.0e-8
-    @test_throws ArgumentError Poisson.evaluate(affine_result, -0.1, 0.2)
-
-    custom_points = [Meshes.Point(0.0, 0.0), Meshes.Point(1.0, 0.0), Meshes.Point(0.0, 1.0)]
-    custom_connectivities = [Meshes.connect((1, 2, 3), Meshes.Triangle)]
-    custom_mesh = Meshes.SimpleMesh(custom_points, custom_connectivities)
-    custom_result = Poisson.solve(zero_f; mesh = custom_mesh, g = affine, penalty = 30.0)
-
-    @test custom_result.mesh === custom_mesh
-    @test length(custom_result.coeffs) == 3
-    @test Poisson.l2_error(custom_result, affine) < 1.0e-8
-end
-
-@testset "plot data" begin
-    mesh = unit_square_mesh(1, 1)
-    ndofs = 3 * JuliaDG.triangle_count(mesh)
-    coeffs = Float64.(1:ndofs)
-    result = Poisson.Result(mesh, coeffs, spzeros(ndofs, ndofs), zeros(ndofs))
-
-    data = Poisson.plot_data(result)
-
-    @test length(data.xs) == ndofs
-    @test length(data.ys) == ndofs
-    @test length(data.values) == ndofs
-    @test length(data.triangles) == JuliaDG.triangle_count(mesh)
-    @test data.triangles == [(1, 2, 3), (4, 5, 6)]
-    @test isempty(intersect(collect(data.triangles[1]), collect(data.triangles[2])))
-    @test data.values == coeffs
-    @test data.xs == [0.0, 1.0, 1.0, 0.0, 1.0, 0.0]
-    @test data.ys == [0.0, 0.0, 1.0, 0.0, 1.0, 1.0]
-
-    raw = Meshes.simplexify(Meshes.CartesianGrid((0.0, 0.0), (1.0, 1.0), dims = (1, 1)))
-    raw_ndofs = 3 * JuliaDG.triangle_count(raw)
-    raw_coeffs = Float64.(1:raw_ndofs)
-    raw_result =
-        Poisson.Result(raw, raw_coeffs, spzeros(raw_ndofs, raw_ndofs), zeros(raw_ndofs))
-    raw_data = Poisson.plot_data(raw_result)
-
-    @test raw_data.triangles == [(1, 2, 3), (4, 5, 6)]
-    @test raw_data.values == raw_coeffs
-
-    bad_result = Poisson.Result(
-        mesh,
-        coeffs[1:(end-1)],
-        spzeros(ndofs - 1, ndofs - 1),
-        zeros(ndofs - 1),
-    )
-    @test_throws ArgumentError Poisson.plot_data(bad_result)
-
-    try
-        Poisson.plot(result)
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg == "plot requires Makie; load CairoMakie or GLMakie before calling it"
-    end
-end
-
-@testset "elastic plot data" begin
-    mesh = unit_square_mesh(1, 1)
-    material = Elastodynamics.Material(1.0, 1.0, 0.5)
-    initial = (x, y) -> (vx = x, vy = 2 * y, sxx = x + y, syy = x - y, sxy = 10 + x - y)
-    state = Elastodynamics.interpolate_state(initial, mesh)
-    energy = Elastodynamics.energy(mesh, state, material)
-    result =
-        Elastodynamics.Result(mesh, state, material, [0.0], [energy], :reflecting, nothing)
-
-    data = Elastodynamics.plot_data(result)
-
-    @test length(data.xs) == length(state) ÷ 5
-    @test length(data.ys) == length(state) ÷ 5
-    @test length(data.values) == length(state) ÷ 5
-    @test data.triangles == [(1, 2, 3), (4, 5, 6)]
-    @test data.values ≈ [sqrt(x^2 + (2 * y)^2) for (x, y) in zip(data.xs, data.ys)]
-
-    sxy_data = Elastodynamics.plot_data(result; field = :sxy)
-    @test sxy_data.xs == data.xs
-    @test sxy_data.ys == data.ys
-    @test sxy_data.triangles == data.triangles
-    @test sxy_data.values ≈ [10 + x - y for (x, y) in zip(data.xs, data.ys)]
-
-    @test_throws ArgumentError Elastodynamics.plot_data(result; field = :pressure)
-
-    state2 = copy(state)
-    triangle_total = JuliaDG.triangle_count(mesh)
-    for triangle = 1:triangle_total
-        for local_index = 1:Elastodynamics.LOCAL_DOF_COUNT
-            state2[Elastodynamics.dof(triangle, local_index, 1, triangle_total)] = 3.0
-            state2[Elastodynamics.dof(triangle, local_index, 2, triangle_total)] = 4.0
-        end
-    end
-    history_result = Elastodynamics.Result(
-        mesh,
-        state2,
-        material,
-        [0.0, 0.1],
-        [energy, energy],
-        :reflecting,
-        [state, state2],
-    )
-    frame_data = Elastodynamics.plot_data(history_result, 2)
-
-    @test frame_data.values ≈ fill(5.0, length(frame_data.values))
-    @test_throws ArgumentError Elastodynamics.plot_data(result, 1)
-    @test_throws ArgumentError Elastodynamics.plot_data(history_result, 0)
-    @test_throws ArgumentError Elastodynamics.plot_data(history_result, 3)
-
-    try
-        Elastodynamics.record(result, "unused.gif")
-        @test false
-    catch err
-        @test err isa ArgumentError
-        @test err.msg ==
-              "record requires Makie; load CairoMakie or GLMakie before calling it"
-    end
-end
-
-@testset "example script" begin
-    package_root = dirname(@__DIR__)
-    example_path = joinpath(package_root, "examples", "poisson2d_unit_square.jl")
-    output = read(`$(Base.julia_cmd()) --project=$package_root $example_path`, String)
-
-    @test occursin(r"DOFs:\s+384", output)
-    @test occursin(r"L2 error:\s+[0-9]", output)
-end
-
-@testset "elastic example script" begin
-    package_root = dirname(@__DIR__)
-    example_path = joinpath(package_root, "examples", "elastodynamics2d_unit_square.jl")
-    output = read(`$(Base.julia_cmd()) --project=$package_root $example_path`, String)
-
-    @test occursin(r"Elastic DOFs:\s+[0-9]+", output)
-    @test occursin(r"Final time:\s+0\.02", output)
-    @test occursin(r"Final energy:\s+[0-9]", output)
+    @test !isdefined(Poisson, :assemble)
+    @test !isdefined(Poisson, :evaluate)
+    @test !isdefined(Poisson, :plot)
+    @test !isdefined(Poisson, :plot_data)
 end

@@ -12,9 +12,6 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 [weakdeps]
 Makie = "ee78f7c6-7fb1-5441-9ec4-5a4bf5e1d5b2"
 
-[extensions]
-JuliaDGMakieExt = "Makie"
-
 [compat]
 Gridap = "0.20"
 Meshes = "0.57"
