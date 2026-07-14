@@ -211,6 +211,25 @@ zero_time_vector(t, x) = VectorValue(0.0, 0.0)
         initial_displacement = zero_vector,
         initial_velocity = zero_vector,
     )
+
+    three_dimensional_model =
+        Gridap.CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0, 0.0, 1.0), (1, 1, 1))
+    @test_throws ArgumentError Elastodynamics.solve(
+        three_dimensional_model;
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.01,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test_throws ArgumentError Elastodynamics.energy(
+        nothing,
+        nothing,
+        material,
+        three_dimensional_model,
+    )
     @test !isdefined(Elastodynamics, :rhs)
     @test !isdefined(Elastodynamics, :evaluate)
     @test !isdefined(Elastodynamics, :plot)

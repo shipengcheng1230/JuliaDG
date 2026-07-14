@@ -52,6 +52,12 @@ function stress(displacement, material::Material)
     return material.lambda * tr(deformation) * identity + 2 * material.mu * deformation
 end
 
+function validate_plane_strain_model(model::Gridap.DiscreteModel)
+    Gridap.num_dims(model) == 2 ||
+        throw(ArgumentError("plane-strain elastodynamics requires a two-dimensional model"))
+    return nothing
+end
+
 function energy(
     displacement,
     velocity,
@@ -59,6 +65,7 @@ function energy(
     model::Gridap.DiscreteModel;
     degree::Integer = 2,
 )
+    validate_plane_strain_model(model)
     degree > 0 || throw(ArgumentError("degree must be positive"))
     domain = Triangulation(model)
     dΩ = Measure(domain, Int(degree))
@@ -96,6 +103,7 @@ function solve(
     initial_displacement,
     initial_velocity,
 )
+    validate_plane_strain_model(model)
     order > 0 || throw(ArgumentError("order must be positive"))
     t0, tF, Δt = validate_time_grid(tspan, dt)
     essential = required_tags(model, dirichlet_tags; keyword = "dirichlet_tags")
