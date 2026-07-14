@@ -113,3 +113,107 @@ end
     @test !isdefined(Poisson, :plot)
     @test !isdefined(Poisson, :plot_data)
 end
+
+const Elastodynamics = JuliaDG.Elastodynamics
+zero_vector(x) = VectorValue(0.0, 0.0)
+zero_time_vector(t, x) = VectorValue(0.0, 0.0)
+
+@testset "transient conforming elastodynamics" begin
+    material = Elastodynamics.Material(1.0, 1.0, 0.5)
+    model = unit_square_model(4, 4)
+
+    zero_result = Elastodynamics.solve(
+        model;
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.01,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test zero_result.model === model
+    @test zero_result.material === material
+    @test zero_result.order == 1
+    for (_, displacement) in zero_result.solution
+        @test all(iszero, Gridap.get_free_dof_values(displacement))
+    end
+
+    pulse(x) = VectorValue(sin(pi * x[1]) * sin(pi * x[2]), 0.0)
+    pulse_result = Elastodynamics.solve(
+        model;
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.01,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        initial_displacement = pulse,
+        initial_velocity = zero_vector,
+    )
+    @test Elastodynamics.energy(
+        pulse_result.initial_displacement,
+        pulse_result.initial_velocity,
+        material,
+        model,
+    ) > 0.0
+    for (_, displacement) in pulse_result.solution
+        @test all(isfinite, Gridap.get_free_dof_values(displacement))
+    end
+
+    loaded = Elastodynamics.solve(
+        tagged_unit_square_model();
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.01,
+        dirichlet_tags = "left",
+        displacement = zero_time_vector,
+        traction_tags = "right",
+        traction = (t, x) -> VectorValue(1.0, 0.0),
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test any(
+        !iszero(value) for (_, displacement) in loaded.solution for
+        value in Gridap.get_free_dof_values(displacement)
+    )
+
+    @test_throws ArgumentError Elastodynamics.Material(0.0, 1.0, 0.5)
+    @test_throws ArgumentError Elastodynamics.Material(1.0, -1.0, 0.5)
+    @test_throws ArgumentError Elastodynamics.Material(1.0, 1.0, 0.0)
+    @test_throws ArgumentError Elastodynamics.solve(
+        model;
+        material = material,
+        tspan = (0.0, 0.0),
+        dt = 0.01,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test_throws ArgumentError Elastodynamics.solve(
+        model;
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.0,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test_throws ArgumentError Elastodynamics.solve(
+        model;
+        material = material,
+        tspan = (0.0, 0.02),
+        dt = 0.01,
+        dirichlet_tags = "boundary",
+        displacement = zero_time_vector,
+        traction_tags = "boundary",
+        traction = zero_time_vector,
+        initial_displacement = zero_vector,
+        initial_velocity = zero_vector,
+    )
+    @test !isdefined(Elastodynamics, :rhs)
+    @test !isdefined(Elastodynamics, :evaluate)
+    @test !isdefined(Elastodynamics, :plot)
+    @test !isdefined(Elastodynamics, :record)
+end
