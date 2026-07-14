@@ -50,11 +50,19 @@ function validate_boundary_roles(
     essential::Vector{String},
     natural::Vector{String},
 )
-    isempty(natural) && return nothing
     labels = Gridap.get_face_labeling(model)
     boundary_dimension = Gridap.num_dims(model) - 1
-    essential_faces = Gridap.Geometry.get_face_mask(labels, essential, boundary_dimension)
-    natural_faces = Gridap.Geometry.get_face_mask(labels, natural, boundary_dimension)
+    topology = Gridap.Geometry.get_grid_topology(model)
+    boundary_faces = Gridap.Geometry.get_isboundary_face(topology, boundary_dimension)
+    essential_mask = Gridap.Geometry.get_face_mask(labels, essential, boundary_dimension)
+    essential_faces = essential_mask .& boundary_faces
+    any(essential_faces) && essential_faces == essential_mask ||
+        throw(ArgumentError("Dirichlet tags must select physical boundary faces"))
+    isempty(natural) && return nothing
+    natural_mask = Gridap.Geometry.get_face_mask(labels, natural, boundary_dimension)
+    natural_faces = natural_mask .& boundary_faces
+    any(natural_faces) && natural_faces == natural_mask ||
+        throw(ArgumentError("natural boundary tags must select physical boundary faces"))
     any(essential_faces .& natural_faces) &&
         throw(ArgumentError("Dirichlet and natural boundary tags select common faces"))
     return nothing

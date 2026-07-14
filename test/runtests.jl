@@ -19,7 +19,17 @@ function tagged_unit_square_model(nx::Integer = 8, ny::Integer = 8)
         "right",
         x -> isapprox(x[1], 1.0; atol = 1.0e-12),
     )
-    merge!(labels, left, right)
+    middle = Gridap.Geometry.face_labeling_from_vertex_filter(
+        topology,
+        "middle",
+        x -> isapprox(x[1], 0.5; atol = 1.0e-12),
+    )
+    mixed = Gridap.Geometry.face_labeling_from_vertex_filter(
+        topology,
+        "mixed",
+        x -> isapprox(x[1], 0.0; atol = 1.0e-12) || isapprox(x[1], 0.5; atol = 1.0e-12),
+    )
+    merge!(labels, left, right, middle, mixed)
     return model
 end
 
@@ -69,6 +79,20 @@ end
         neumann = x -> 1.0,
     )
     @test Poisson.l2_error(loaded, x -> x[1]) < 1.0e-10
+
+    interior_model = tagged_unit_square_model(2, 2)
+    @test_throws ArgumentError Poisson.solve(
+        interior_model,
+        zero_source;
+        dirichlet_tags = "middle",
+        dirichlet = x -> 0.0,
+    )
+    @test_throws ArgumentError Poisson.solve(
+        interior_model,
+        zero_source;
+        dirichlet_tags = "mixed",
+        dirichlet = x -> 0.0,
+    )
 
     @test_throws ArgumentError Poisson.solve(
         model,
