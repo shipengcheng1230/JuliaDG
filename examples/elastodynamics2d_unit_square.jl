@@ -1,23 +1,42 @@
 using JuliaDG
+using Gridap
 
-material = JuliaDG.Elastodynamics.Material(1.0, 1.0, 0.5)
+model = unit_square_model(16, 16)
+material = Elastodynamics.Material(1.0, 1.0, 0.5)
+zero_vector(x) = VectorValue(0.0, 0.0)
+zero_displacement(t, x) = VectorValue(0.0, 0.0)
+initial_displacement(x) = VectorValue(sin(pi * x[1]) * sin(pi * x[2]), 0.0)
 
-function initial_pulse(x, y)
-    r2 = (x - 0.5)^2 + (y - 0.5)^2
-    amplitude = exp(-120 * r2)
-    return (vx = 0.0, vy = amplitude, sxx = 0.0, syy = 0.0, sxy = 0.0)
-end
-
-result = JuliaDG.Elastodynamics.solve(
-    initial_pulse;
-    nx = 8,
-    ny = 8,
+result = Elastodynamics.solve(
+    model;
     material = material,
     tspan = (0.0, 0.02),
-    cfl = 0.05,
-    boundary = :reflecting,
+    dt = 0.01,
+    dirichlet_tags = "boundary",
+    displacement = zero_displacement,
+    initial_displacement = initial_displacement,
+    initial_velocity = zero_vector,
 )
 
-println("Elastic DOFs: ", length(result.state))
-println("Final time: ", result.times[end])
-println("Final energy: ", JuliaDG.Elastodynamics.energy(result))
+domain = Triangulation(model)
+for (step, (_, displacement)) in enumerate(result.solution)
+    name = "elastodynamics_step_$(step)"
+    writevtk(
+        domain,
+        name,
+        cellfields = [
+            "displacement" => displacement,
+            "stress" => Elastodynamics.stress(displacement, material),
+        ],
+    )
+end
+
+println(
+    "Initial energy: ",
+    Elastodynamics.energy(
+        result.initial_displacement,
+        result.initial_velocity,
+        material,
+        model,
+    ),
+)

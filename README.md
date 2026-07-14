@@ -1,148 +1,116 @@
 # JuliaDG
 
-[![CI](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml/badge.svg)](https://github.com/shipengcheng1230/JuliaDG/actions/workflows/ci.yml)
+JuliaDG is a focused Gridap.jl wrapper for conforming 2D Poisson and second-order displacement elastodynamics.
 
-JuliaDG is a minimal Julia package for 2D Poisson and first-order 2D elastodynamics, not a generic PDE framework.
+## Model contract
 
-```text
--Delta u = f  in [0,1]^2
-u = g         on the boundary
-```
+Every solver accepts a `Gridap.DiscreteModel`. Face labels on that model select every Dirichlet, Neumann, and traction boundary condition; the selected labels must identify physical boundary faces.
 
-## Scope
-
-V1 intentionally stays small:
-
-- P1 discontinuous triangular elements.
-- Structured unit-square meshes split into two triangles per rectangle.
-- SIPG interior face terms.
-- Weak Dirichlet boundary data through Nitsche/SIPG boundary terms.
-- Sparse assembly and direct solution with `A \ b`.
-- Mesh construction through Meshes.jl, with Makie plotting still optional.
-- No mesh files, high-order elements, or generic PDE framework.
-
-## API
+## Unit-square model
 
 ```julia
 using JuliaDG
 
-mesh = JuliaDG.unit_square_mesh(8, 8)
-A, b = JuliaDG.Poisson.assemble(mesh, f, g; penalty=20.0)
-result = JuliaDG.Poisson.solve(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
-custom_result = JuliaDG.Poisson.solve(f; mesh=mesh, g=(x, y) -> 0.0, penalty=20.0)
-u_xy = JuliaDG.Poisson.evaluate(result, x, y)
-err = JuliaDG.Poisson.l2_error(result, exact)
+model = JuliaDG.unit_square_model(16, 16)
 ```
 
-Main containers:
+`unit_square_model` provides the Gridap face label `"boundary"` for the complete boundary of `[0, 1]^2`.
 
-```julia
-JuliaDG.Poisson.Result(mesh, coeffs, A, b)
-JuliaDG.Elastodynamics.Result(mesh, state, material, times, energy_history, boundary, state_history)
-```
+## Poisson
 
-Both solvers accept `Meshes.Mesh`; `JuliaDG.unit_square_mesh` is only a convenience constructor and JuliaDG defines no mesh type of its own. Each triangle owns three DG degrees of freedom.
-
-## SIPG Form
-
-For interior facets, with normal `n` oriented from the left triangle to the right triangle:
-
-```text
-[u] = u_left - u_right
-{grad u . n} = 0.5 * (grad u_left . n + grad u_right . n)
-```
-
-The bilinear form is:
-
-```text
-a(u, v) =
-    sum_K int_K grad u . grad v
-  - sum_F int_F {grad u . n} [v]
-  - sum_F int_F {grad v . n} [u]
-  + sum_F int_F (penalty / h_F) [u] [v]
-```
-
-On boundary facets, the same structure is used with `u_right = g` and `v_right = 0`, giving the Dirichlet contribution:
-
-```text
-int_boundary (-grad u . n v - grad v . n u + penalty / h_F u v)
-= int_boundary (-grad v . n g + penalty / h_F g v)
-```
-
-## Manufactured Solution Example
+`Poisson.solve` takes a scalar source field, Dirichlet labels and a Dirichlet callback. It also accepts optional `neumann_tags` and `neumann` callbacks for labeled Neumann faces.
 
 ```julia
 using JuliaDG
+using Gridap
 
-exact(x, y) = sin(pi * x) * sin(pi * y)
-f(x, y) = 2 * pi^2 * exact(x, y)
+model = unit_square_model(16, 16)
+exact(x) = sin(pi * x[1]) * sin(pi * x[2])
+source(x) = 2 * pi^2 * exact(x)
 
-result = JuliaDG.Poisson.solve(f; nx=8, ny=8, g=(x, y) -> 0.0, penalty=20.0)
-println("DOFs: ", length(result.coeffs))
-println("L2 error: ", JuliaDG.Poisson.l2_error(result, exact))
+result = Poisson.solve(
+    model,
+    source;
+    dirichlet_tags = "boundary",
+    dirichlet = x -> 0.0,
+)
+
+domain = Triangulation(model)
+writevtk(domain, "poisson_solution", cellfields = ["u" => result.solution])
+println("L2 error: ", Poisson.l2_error(result, exact))
 ```
 
-Run it with:
+Run the example with:
 
 ```bash
 julia --project=. examples/poisson2d_unit_square.jl
 ```
 
-## 2D Elastodynamics Example
+## Plane-strain elastodynamics
 
-JuliaDG also includes a focused first-order velocity-stress solver for constant-material isotropic 2D elastodynamics on the same P1 triangular unit-square meshes:
+JuliaDG solves the displacement form of plane-strain elastodynamics:
 
 ```text
-rho * dt(vx) = dx(sxx) + dy(sxy)
-rho * dt(vy) = dx(sxy) + dy(syy)
-dt(sxx) = (lambda + 2mu) * dx(vx) + lambda * dy(vy)
-dt(syy) = lambda * dx(vx) + (lambda + 2mu) * dy(vy)
-dt(sxy) = mu * (dy(vx) + dx(vy))
+rho * d2u/dt2 - div(sigma(u)) = body_force
+sigma(u) = lambda * tr(epsilon(u)) * I + 2 * mu * epsilon(u)
 ```
 
-Minimal Gaussian pulse:
+The `displacement` callback and `dirichlet_tags` prescribe displacement on labeled faces. Optional `traction` and `traction_tags` callbacks prescribe traction on labeled faces. Supply `initial_displacement` and `initial_velocity` to define the initial state. Time integration uses average-acceleration Newmark.
 
 ```julia
 using JuliaDG
+using Gridap
 
-material = JuliaDG.Elastodynamics.Material(1.0, 1.0, 0.5)
-
-initial_pulse(x, y) = (
-    vx=0.0,
-    vy=exp(-120 * ((x - 0.5)^2 + (y - 0.5)^2)),
-    sxx=0.0,
-    syy=0.0,
-    sxy=0.0,
+model = unit_square_model(16, 16)
+material = Elastodynamics.Material(1.0, 1.0, 0.5)
+zero_vector(x) = VectorValue(0.0, 0.0)
+zero_displacement(t, x) = VectorValue(0.0, 0.0)
+initial_displacement(x) = VectorValue(
+    sin(pi * x[1]) * sin(pi * x[2]),
+    0.0,
 )
 
-result = JuliaDG.Elastodynamics.solve(
-    initial_pulse;
-    nx=8,
-    ny=8,
-    material=material,
-    tspan=(0.0, 0.02),
-    boundary=:reflecting,
+result = Elastodynamics.solve(
+    model;
+    material = material,
+    tspan = (0.0, 0.02),
+    dt = 0.01,
+    dirichlet_tags = "boundary",
+    displacement = zero_displacement,
+    initial_displacement = initial_displacement,
+    initial_velocity = zero_vector,
 )
 
-println("Final energy: ", JuliaDG.Elastodynamics.energy(result))
+domain = Triangulation(model)
+for (step, (_, displacement)) in enumerate(result.solution)
+    name = "elastodynamics_step_$(step)"
+    writevtk(
+        domain,
+        name,
+        cellfields = [
+            "displacement" => displacement,
+            "stress" => Elastodynamics.stress(displacement, material),
+        ],
+    )
+end
+
+println(
+    "Initial energy: ",
+    Elastodynamics.energy(
+        result.initial_displacement,
+        result.initial_velocity,
+        material,
+        model,
+    ),
+)
 ```
 
-V1 uses constant `JuliaDG.Elastodynamics.Material(rho, lambda, mu)` values and supports `:reflecting` and `:traction_free` boundaries. Displacement output, spatially varying material, source terms, absorbing boundaries, mesh-file input, and higher-order elements are outside this first version.
+Run the example with:
 
-## Optional Visualization
-
-JuliaDG keeps Makie optional. Install and load a Makie backend such as CairoMakie or GLMakie before calling `JuliaDG.Poisson.plot`:
-
-```julia
-using JuliaDG
-using CairoMakie
-
-exact(x, y) = sin(pi * x) * sin(pi * y)
-f(x, y) = 2 * pi^2 * exact(x, y)
-
-result = JuliaDG.Poisson.solve(f; nx=16, ny=16)
-fig = JuliaDG.Poisson.plot(result)
-save("solution.png", fig)
+```bash
+julia --project=. examples/elastodynamics2d_unit_square.jl
 ```
 
-The plotting helper duplicates cell vertices so discontinuous Galerkin jumps remain visible instead of being averaged across neighboring cells.
+## VTK output
+
+Both examples use `Gridap.writevtk` on `Triangulation(model)`. The Poisson example writes the scalar solution, while the elastodynamics example writes displacement and derived stress for each time step. Run examples from a directory where their VTK output should be created.

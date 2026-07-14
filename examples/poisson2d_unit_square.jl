@@ -1,11 +1,12 @@
 using JuliaDG
+using Gridap
 
-exact(x, y) = sin(pi * x) * sin(pi * y)
-f(x, y) = 2 * pi^2 * exact(x, y)
-g(x, y) = 0.0
+model = unit_square_model(16, 16)
+exact(x) = sin(pi * x[1]) * sin(pi * x[2])
+source(x) = 2 * pi^2 * exact(x)
 
-result = JuliaDG.Poisson.solve(f; nx = 8, ny = 8, g = g, penalty = 20.0)
-error = JuliaDG.Poisson.l2_error(result, exact)
+result = Poisson.solve(model, source; dirichlet_tags = "boundary", dirichlet = x -> 0.0)
 
-println("DOFs: ", length(result.coeffs))
-println("L2 error: ", error)
+domain = Triangulation(model)
+writevtk(domain, "poisson_solution", cellfields = ["u" => result.solution])
+println("L2 error: ", Poisson.l2_error(result, exact))

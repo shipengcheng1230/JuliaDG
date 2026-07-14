@@ -111,7 +111,6 @@ end
     @test !isdefined(Poisson, :assemble)
     @test !isdefined(Poisson, :evaluate)
     @test !isdefined(Poisson, :plot)
-    @test !isdefined(Poisson, :plot_data)
 end
 
 const Elastodynamics = JuliaDG.Elastodynamics
