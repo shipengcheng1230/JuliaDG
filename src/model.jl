@@ -13,25 +13,17 @@ function normalized_tags(tags; keyword::AbstractString, required::Bool)
         return [String(tags)]
     elseif tags isa AbstractVector{<:AbstractString}
         values = String.(tags)
-        isempty(values) &&
-            required &&
-            throw(ArgumentError("$keyword must contain at least one tag"))
+        isempty(values) && required && throw(ArgumentError("$keyword must contain at least one tag"))
         return unique(values)
     end
 
     throw(ArgumentError("$keyword must be a tag name or a vector of tag names"))
 end
 
-function validate_known_tags(
-    model::Gridap.DiscreteModel,
-    tags::Vector{String};
-    keyword::AbstractString,
-)
+function validate_known_tags(model::Gridap.DiscreteModel, tags::Vector{String}; keyword::AbstractString)
     names = Set(Gridap.Geometry.get_tag_name(Gridap.get_face_labeling(model)))
     missing = sort!(collect(setdiff(Set(tags), names)))
-    isempty(missing) || throw(
-        ArgumentError("$keyword contains unknown Gridap tag(s): $(join(missing, ", "))"),
-    )
+    isempty(missing) || throw(ArgumentError("$keyword contains unknown Gridap tag(s): $(join(missing, ", "))"))
     return tags
 end
 
@@ -45,11 +37,7 @@ function optional_tags(model::Gridap.DiscreteModel, tags; keyword::AbstractStrin
     return validate_known_tags(model, values; keyword = keyword)
 end
 
-function validate_boundary_roles(
-    model::Gridap.DiscreteModel,
-    essential::Vector{String},
-    natural::Vector{String},
-)
+function validate_boundary_roles(model::Gridap.DiscreteModel, essential::Vector{String}, natural::Vector{String})
     labels = Gridap.get_face_labeling(model)
     boundary_dimension = Gridap.num_dims(model) - 1
     topology = Gridap.Geometry.get_grid_topology(model)

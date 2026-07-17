@@ -24,19 +24,11 @@ for (step, (_, displacement)) in enumerate(result.solution)
     writevtk(
         domain,
         name,
-        cellfields = [
-            "displacement" => displacement,
-            "stress" => Elastodynamics.stress(displacement, material),
-        ],
+        cellfields = ["displacement" => displacement, "stress" => Elastodynamics.stress(displacement, material)],
     )
 end
 
 println(
     "Initial energy: ",
-    Elastodynamics.energy(
-        result.initial_displacement,
-        result.initial_velocity,
-        material,
-        model,
-    ),
+    Elastodynamics.energy(result.initial_displacement, result.initial_velocity, material, model),
 )

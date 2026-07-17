@@ -53,18 +53,11 @@ function stress(displacement, material::Material)
 end
 
 function validate_plane_strain_model(model::Gridap.DiscreteModel)
-    Gridap.num_dims(model) == 2 ||
-        throw(ArgumentError("plane-strain elastodynamics requires a two-dimensional model"))
+    Gridap.num_dims(model) == 2 || throw(ArgumentError("plane-strain elastodynamics requires a two-dimensional model"))
     return nothing
 end
 
-function energy(
-    displacement,
-    velocity,
-    material::Material,
-    model::Gridap.DiscreteModel;
-    degree::Integer = 2,
-)
+function energy(displacement, velocity, material::Material, model::Gridap.DiscreteModel; degree::Integer = 2)
     validate_plane_strain_model(model)
     degree > 0 || throw(ArgumentError("degree must be positive"))
     domain = Triangulation(model)
@@ -72,14 +65,12 @@ function energy(
     deformation = strain(displacement)
     kinetic = 0.5 * material.rho * (velocity ⋅ velocity)
     strain_density =
-        material.mu * (deformation ⊙ deformation) +
-        0.5 * material.lambda * tr(deformation) * tr(deformation)
+        material.mu * (deformation ⊙ deformation) + 0.5 * material.lambda * tr(deformation) * tr(deformation)
     return sum(∫(kinetic + strain_density) * dΩ)
 end
 
 function validate_time_grid(tspan, dt::Real)
-    tspan isa Tuple && length(tspan) == 2 ||
-        throw(ArgumentError("tspan must be a two-element tuple"))
+    tspan isa Tuple && length(tspan) == 2 || throw(ArgumentError("tspan must be a two-element tuple"))
     t0, tF = Float64(tspan[1]), Float64(tspan[2])
     tF > t0 || throw(ArgumentError("tspan must have tF > t0"))
     dt > 0 || throw(ArgumentError("dt must be positive"))
@@ -118,33 +109,24 @@ function solve(
 
     mass(t, acceleration, v) = ∫(material.rho * (v ⋅ acceleration)) * dΩ
     damping(t, velocity, v) = ∫(0.0 * (v ⋅ velocity)) * dΩ
-    stiffness(t, u, v) =
-        ∫(2 * material.mu * (ε(v) ⊙ ε(u)) + material.lambda * tr(ε(v)) * tr(ε(u))) * dΩ
+    stiffness(t, u, v) = ∫(2 * material.mu * (ε(v) ⊙ ε(u)) + material.lambda * tr(ε(v)) * tr(ε(u))) * dΩ
 
     forcing = if isempty(natural)
         (t, v) -> ∫(v ⋅ (x -> body_force(t, x))) * dΩ
     else
         boundary = BoundaryTriangulation(model; tags = natural)
         dΓ = Measure(boundary, 2 * Int(order))
-        (t, v) ->
-            ∫(v ⋅ (x -> body_force(t, x))) * dΩ + ∫(v ⋅ (x -> traction(t, x))) * dΓ
+        (t, v) -> ∫(v ⋅ (x -> body_force(t, x))) * dΩ + ∫(v ⋅ (x -> traction(t, x))) * dΓ
     end
 
-    operator = TransientLinearFEOperator(
-        (stiffness, damping, mass),
-        forcing,
-        trial,
-        test;
-        constant_forms = (true, true, true),
-    )
+    operator =
+        TransientLinearFEOperator((stiffness, damping, mass), forcing, trial, test; constant_forms = (true, true, true))
     displacement0 = interpolate_everywhere(initial_displacement, trial(t0))
     velocity0 = interpolate_everywhere(initial_velocity, ∂t(trial)(t0))
     linear_solver = LUSolver()
-    nonlinear_solver =
-        NLSolver(linear_solver; show_trace = false, method = :newton, iterations = 10)
+    nonlinear_solver = NLSolver(linear_solver; show_trace = false, method = :newton, iterations = 10)
     time_solver = Newmark(nonlinear_solver, Δt, 0.5, 0.25)
-    solution =
-        Gridap.Algebra.solve(time_solver, operator, t0, tF, (displacement0, velocity0))
+    solution = Gridap.Algebra.solve(time_solver, operator, t0, tF, (displacement0, velocity0))
     return Result(model, material, displacement0, velocity0, solution, Int(order))
 end
 
