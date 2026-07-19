@@ -32,7 +32,7 @@ end
     @test_throws ArgumentError unit_square_model(2, 0)
 end
 
-@testset "conforming Poisson" begin
+@testset "SIPG Poisson" begin
     model = unit_square_model(4, 4)
     affine(x) = 1.0 + x[1] + 2.0 * x[2]
     zero_source(x) = 0.0
@@ -40,6 +40,7 @@ end
     affine_result = Poisson.solve(model, zero_source; dirichlet_tags = "boundary", dirichlet = affine)
     @test affine_result.model === model
     @test affine_result.order == 1
+    @test length(Gridap.get_free_dof_values(affine_result.solution)) == 4 * 4 * 4
     @test Poisson.l2_error(affine_result, affine) < 1.0e-10
 
     exact(x) = sin(pi * x[1]) * sin(pi * x[2])
@@ -74,6 +75,13 @@ end
     )
 
     @test_throws ArgumentError Poisson.solve(model, zero_source; dirichlet_tags = "missing", dirichlet = x -> 0.0)
+    @test_throws ArgumentError Poisson.solve(
+        model,
+        zero_source;
+        penalty = 0.0,
+        dirichlet_tags = "boundary",
+        dirichlet = x -> 0.0,
+    )
     @test_throws ArgumentError Poisson.solve(
         model,
         zero_source;

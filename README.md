@@ -1,6 +1,6 @@
 # JuliaDG
 
-JuliaDG is a focused Gridap.jl wrapper for conforming 2D Poisson and second-order displacement elastodynamics.
+JuliaDG is a focused Gridap.jl wrapper for SIPG 2D Poisson and conforming second-order displacement elastodynamics.
 
 ## Model contract
 
@@ -18,7 +18,7 @@ model = JuliaDG.unit_square_model(16, 16)
 
 ## Poisson
 
-`Poisson.solve` takes a scalar source field, Dirichlet labels and a Dirichlet callback. It also accepts optional `neumann_tags` and `neumann` callbacks for labeled Neumann faces.
+`Poisson.solve` uses the symmetric interior-penalty Galerkin method. It takes a scalar source field, Dirichlet labels and a Dirichlet callback, and accepts optional `neumann_tags` and `neumann` callbacks for labeled Neumann faces. The `penalty` keyword defaults to `10.0` and can be increased if a mesh requires stronger interface stabilization.
 
 ```julia
 using JuliaDG
